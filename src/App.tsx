@@ -9,6 +9,7 @@ import ProfilePage from "./ProfilePage";
 import AdminPage from "./AdminPage";
 import EditProfilePage from "./EditProfilePage";
 import RegisterPage from "./RegisterPage";
+import LoginPage from "./LoginPage";
 import VerificationPendingPage from "./VerificationPendingPage";
 import { MessagesPage } from "./components/MessagesPage";
 import { ChatManager } from "./components/ChatManager";
@@ -23,12 +24,12 @@ type PageType =
   | "edit-profile"
   | "messages"
   | "register"
-  | "verification";
+  | "verification"
+  | "login";
 
 function AppRouter() {
   const { user, isAuthenticated } = useAuth();
-  const [currentPage, setCurrentPage] =
-    useState<PageType>("community");
+  const [currentPage, setCurrentPage] = useState<PageType>("login");
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -38,14 +39,14 @@ function AppRouter() {
 
       // Auth pages (accessible when not authenticated)
       if (hash === "register") {
-        setCurrentPage(hash);
+        setCurrentPage("register");
         return;
       }
 
       // Check if user is authenticated
       if (!isAuthenticated) {
-        setCurrentPage("community");
-        window.location.hash = "#/community";
+        setCurrentPage("login");
+        window.location.hash = "#/login";
         return;
       }
 
@@ -89,16 +90,17 @@ function AppRouter() {
     };
 
     window.addEventListener("hashchange", handleHashChange);
-    handleHashChange(); // Check initial hash
+    handleHashChange();
 
     return () =>
-      window.removeEventListener(
-        "hashchange",
-        handleHashChange,
-      );
+      window.removeEventListener("hashchange", handleHashChange);
   }, [isAuthenticated, user]);
 
   // Render appropriate page
+  if (currentPage === "login") {
+    return <LoginPage />;
+  }
+
   if (currentPage === "register") {
     return <RegisterPage />;
   }
