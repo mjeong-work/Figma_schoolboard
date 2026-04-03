@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { localAuthRepository, type AuthUserRecord, type UserStatus } from './authRepository';
 
 export interface User {
   id: string;
@@ -7,13 +8,18 @@ export interface User {
   role: string;
   department: string;
   verified: boolean;
-  status: 'pending' | 'approved' | 'rejected';
+  status: UserStatus;
   avatar?: string;
   graduationYear?: string;
 }
 
+export interface CurrentUser extends User {
+  displayName: string;
+}
+
 interface AuthContextType {
   user: User | null;
+  currentUser: CurrentUser | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
   register: (data: RegisterData) => Promise<{ success: boolean; message: string }>;
@@ -31,154 +37,155 @@ export interface RegisterData {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const CURRENT_USER_KEY = 'campusconnect_currentUser';
 
-// Mock users database (stored in localStorage)
-const getUsersFromStorage = (): User[] => {
-  const users = localStorage.getItem('campusconnect_users');
-  if (users) {
-    return JSON.parse(users);
+const toPublicUser = (record: AuthUserRecord): User => ({
+  id: record.id,
+  name: record.name,
+  email: record.email,
+  role: record.role,
+  department: record.department,
+  verified: record.verified,
+  status: record.status,
+  avatar: record.avatar,
+  graduationYear: record.graduationYear,
+});
+
+const safeReadCurrentUser = (): User | null => {
+  const raw = localStorage.getItem(CURRENT_USER_KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as User;
+    const dbUser = localAuthRepository.findById(parsed.id);
+    return dbUser ? toPublicUser(dbUser) : null;
+  } catch {
+    return null;
   }
-  // Default admin user
-  return [
-    {
-      id: '1',
-      name: 'Admin User',
-      email: 'admin@university.edu',
-      role: 'Administrator',
-      department: 'Administration',
-      verified: true,
-      status: 'approved',
-    },
-  ];
 };
 
-const saveUsersToStorage = (users: User[]) => {
-  localStorage.setItem('campusconnect_users', JSON.stringify(users));
+const saveCurrentUser = (user: User | null) => {
+  if (!user) {
+    localStorage.removeItem(CURRENT_USER_KEY);
+    return;
+  }
+  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
 };
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    // Auto-login with a default user (bypass sign-in for now)
-    const currentUser = localStorage.getItem('campusconnect_currentUser');
-    if (currentUser) {
-      setUser(JSON.parse(currentUser));
-    } else {
-      // Create and set a default approved user
-      const defaultUser: User = {
-        id: 'default-user-1',
-        email: 'student@campus.edu',
-        name: 'Demo Student',
-        role: 'student',
-        status: 'approved',
-        studentId: 'STU12345',
-        major: 'Computer Science',
-        graduationYear: '2026',
-        bio: 'Campus Connect user',
-        profileImage: undefined,
-        createdAt: Date.now()
-      };
-      setUser(defaultUser);
-      localStorage.setItem('campusconnect_currentUser', JSON.stringify(defaultUser));
-    }
+    setUser(safeReadCurrentUser());
   }, []);
 
+  const currentUser = useMemo<CurrentUser | null>(() => {
+    if (!user) return null;
+    return {
+      ...user,
+      displayName: user.name,
+    };
+  }, [user]);
+
   const login = async (email: string, password: string): Promise<{ success: boolean; message: string }> => {
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
-    const users = getUsersFromStorage();
-    const foundUser = users.find((u) => u.email === email);
-
+    const foundUser = localAuthRepository.findByEmail(email);
     if (!foundUser) {
-      return { success: false, message: 'Invalid email or password' };
+      return { success: false, message: 'No account found with that email.' };
     }
 
-    // In a real app, you'd verify password hash
-    // For demo purposes, we'll accept any password except empty
-    if (!password) {
-      return { success: false, message: 'Password is required' };
+    if (foundUser.password !== password) {
+      return { success: false, message: 'Incorrect password.' };
     }
 
-    // Check if user is approved
-    if (foundUser.status === 'pending') {
-      return { success: false, message: 'Your account is pending approval. Please check back later.' };
+    const authenticatedUser = toPublicUser(foundUser);
+    setUser(authenticatedUser);
+    saveCurrentUser(authenticatedUser);
+
+    if (authenticatedUser.status === 'pending') {
+      return {
+        success: true,
+        message: 'Login successful. Your account is still pending approval.',
+      };
     }
 
-    if (foundUser.status === 'rejected') {
-      return { success: false, message: 'Your account has been rejected. Please contact support.' };
+    if (authenticatedUser.status === 'rejected') {
+      return {
+        success: true,
+        message: 'Login successful. Your account has been rejected.',
+      };
     }
 
-    // Successful login
-    setUser(foundUser);
-    localStorage.setItem('campusconnect_currentUser', JSON.stringify(foundUser));
-    return { success: true, message: 'Login successful' };
+    return { success: true, message: 'Login successful.' };
   };
 
   const register = async (data: RegisterData): Promise<{ success: boolean; message: string }> => {
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
-    // Validate campus email
     if (!data.email.endsWith('.edu')) {
-      return { success: false, message: 'Please use a valid campus email address (.edu)' };
+      return { success: false, message: 'Please use a valid campus email address (.edu).' };
     }
 
-    const users = getUsersFromStorage();
-
-    // Check if email already exists
-    if (users.some((u) => u.email === data.email)) {
-      return { success: false, message: 'An account with this email already exists' };
+    if (localAuthRepository.findByEmail(data.email)) {
+      return { success: false, message: 'An account with this email already exists.' };
     }
 
-    // Create new user (pending approval)
-    const newUser: User = {
+    const newUserRecord: AuthUserRecord = {
       id: Date.now().toString(),
       name: data.name,
-      email: data.email,
+      email: data.email.trim().toLowerCase(),
+      password: data.password,
       role: data.role,
       department: data.department,
       graduationYear: data.graduationYear,
       verified: false,
       status: 'pending',
+      createdAt: Date.now(),
     };
 
-    users.push(newUser);
-    saveUsersToStorage(users);
+    localAuthRepository.createUser(newUserRecord);
 
-    // Log them in with pending status
+    const newUser = toPublicUser(newUserRecord);
     setUser(newUser);
-    localStorage.setItem('campusconnect_currentUser', JSON.stringify(newUser));
+    saveCurrentUser(newUser);
 
-    return { success: true, message: 'Registration successful! Your account is pending approval.' };
+    return {
+      success: true,
+      message: 'Registration successful. Your account is pending admin approval.',
+    };
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('campusconnect_currentUser');
+    saveCurrentUser(null);
   };
 
   const updateUser = (updates: Partial<User>) => {
     if (!user) return;
 
-    const updatedUser = { ...user, ...updates };
-    setUser(updatedUser);
-    localStorage.setItem('campusconnect_currentUser', JSON.stringify(updatedUser));
+    const updatedDbUser = localAuthRepository.updateUser(user.id, {
+      name: updates.name,
+      role: updates.role,
+      department: updates.department,
+      verified: updates.verified,
+      status: updates.status,
+      avatar: updates.avatar,
+      graduationYear: updates.graduationYear,
+    });
 
-    // Update in users storage
-    const users = getUsersFromStorage();
-    const index = users.findIndex((u) => u.id === user.id);
-    if (index !== -1) {
-      users[index] = updatedUser;
-      saveUsersToStorage(users);
-    }
+    if (!updatedDbUser) return;
+
+    const updatedUser = toPublicUser(updatedDbUser);
+    setUser(updatedUser);
+    saveCurrentUser(updatedUser);
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        currentUser,
         isAuthenticated: !!user,
         login,
         register,
@@ -199,48 +206,36 @@ export const useAuth = () => {
   return context;
 };
 
-// Helper functions for admin to manage users
 export const getPendingUsers = (): User[] => {
-  const users = getUsersFromStorage();
-  return users.filter((u) => u.status === 'pending');
+  return localAuthRepository
+    .getAllUsers()
+    .filter((user) => user.status === 'pending')
+    .map(toPublicUser);
 };
 
 export const approveUser = (userId: string) => {
-  const users = getUsersFromStorage();
-  const index = users.findIndex((u) => u.id === userId);
-  if (index !== -1) {
-    users[index].status = 'approved';
-    users[index].verified = true;
-    saveUsersToStorage(users);
+  const updated = localAuthRepository.updateUser(userId, {
+    status: 'approved',
+    verified: true,
+  });
 
-    // Update current user if they're the one being approved
-    const currentUser = localStorage.getItem('campusconnect_currentUser');
-    if (currentUser) {
-      const user = JSON.parse(currentUser);
-      if (user.id === userId) {
-        user.status = 'approved';
-        user.verified = true;
-        localStorage.setItem('campusconnect_currentUser', JSON.stringify(user));
-      }
-    }
+  if (!updated) return;
+
+  const sessionUser = safeReadCurrentUser();
+  if (sessionUser?.id === userId) {
+    saveCurrentUser(toPublicUser(updated));
   }
 };
 
 export const rejectUser = (userId: string) => {
-  const users = getUsersFromStorage();
-  const index = users.findIndex((u) => u.id === userId);
-  if (index !== -1) {
-    users[index].status = 'rejected';
-    saveUsersToStorage(users);
+  const updated = localAuthRepository.updateUser(userId, {
+    status: 'rejected',
+  });
 
-    // Update current user if they're the one being rejected
-    const currentUser = localStorage.getItem('campusconnect_currentUser');
-    if (currentUser) {
-      const user = JSON.parse(currentUser);
-      if (user.id === userId) {
-        user.status = 'rejected';
-        localStorage.setItem('campusconnect_currentUser', JSON.stringify(user));
-      }
-    }
+  if (!updated) return;
+
+  const sessionUser = safeReadCurrentUser();
+  if (sessionUser?.id === userId) {
+    saveCurrentUser(toPublicUser(updated));
   }
 };
