@@ -8,6 +8,7 @@ import MarketplacePage from "./MarketplacePage";
 import ProfilePage from "./ProfilePage";
 import AdminPage from "./AdminPage";
 import EditProfilePage from "./EditProfilePage";
+import LoginPage from "./LoginPage";
 import RegisterPage from "./RegisterPage";
 import VerificationPendingPage from "./VerificationPendingPage";
 import { MessagesPage } from "./components/MessagesPage";
@@ -22,13 +23,14 @@ type PageType =
   | "admin"
   | "edit-profile"
   | "messages"
+  | "login"
   | "register"
   | "verification";
 
 function AppRouter() {
   const { user, isAuthenticated } = useAuth();
   const [currentPage, setCurrentPage] =
-    useState<PageType>("community");
+    useState<PageType>("login");
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -37,6 +39,14 @@ function AppRouter() {
         .replace("/", "");
 
       // Auth pages (accessible when not authenticated)
+      if (hash === "login" || hash === "") {
+        setCurrentPage("login");
+        if (hash !== "login") {
+          window.location.hash = "#/login";
+        }
+        return;
+      }
+
       if (hash === "register") {
         setCurrentPage(hash);
         return;
@@ -44,8 +54,8 @@ function AppRouter() {
 
       // Check if user is authenticated
       if (!isAuthenticated) {
-        setCurrentPage("community");
-        window.location.hash = "#/community";
+        setCurrentPage("login");
+        window.location.hash = "#/login";
         return;
       }
 
@@ -99,6 +109,10 @@ function AppRouter() {
   }, [isAuthenticated, user]);
 
   // Render appropriate page
+  if (currentPage === "login") {
+    return <LoginPage />;
+  }
+
   if (currentPage === "register") {
     return <RegisterPage />;
   }

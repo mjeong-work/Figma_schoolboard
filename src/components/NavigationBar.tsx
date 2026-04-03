@@ -23,7 +23,7 @@ export function NavigationBar({ activeTab = 'community' }: NavigationBarProps) {
 
   const handleLogout = () => {
     logout();
-    window.location.hash = '#/community';
+    window.location.hash = '#/login';
   };
 
   return (
