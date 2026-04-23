@@ -9,16 +9,17 @@ interface NavigationBarProps {
 }
 
 export function NavigationBar({ activeTab = 'community' }: NavigationBarProps) {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const { getTotalUnreadCount } = useChat();
   const unreadCount = getTotalUnreadCount();
+  const isAdmin = user?.role === 'Administrator';
 
   const navLinks = [
     { name: 'Community', href: '#community', active: activeTab === 'community' },
     { name: 'Events', href: '#events', active: activeTab === 'events' },
     { name: 'Marketplace', href: '#marketplace', active: activeTab === 'marketplace' },
     { name: 'Profile', href: '#profile', active: activeTab === 'profile' },
-    { name: 'Admin', href: '#admin', active: activeTab === 'admin' }
+    ...(isAdmin ? [{ name: 'Admin', href: '#admin', active: activeTab === 'admin' }] : []),
   ];
 
   const handleLogout = () => {

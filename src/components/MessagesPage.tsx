@@ -5,257 +5,41 @@ import { Button } from './ui/button';
 import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { ArrowLeft, Send, MoreHorizontal, Calendar, ShoppingBag, MessageCircle } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
-
-// Sample conversation data
-const sampleConversations = [
-  {
-    id: 'conv_1',
-    otherUser: {
-      name: 'Sarah Chen',
-      avatar: 'S',
-    },
-    lastMessage: {
-      text: 'Does that work for you?',
-      timestamp: Date.now() - 1200000,
-      isFromMe: false,
-      unread: true,
-    },
-    context: 'Re: MacBook Pro 13" 2020',
-    unreadCount: 2,
-    originalPost: {
-      type: 'marketplace' as const,
-      title: 'MacBook Pro 13" 2020',
-      image: 'https://images.unsplash.com/photo-1551533390-b80b6ffa7816?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtYWNib29rJTIwcHJvJTIwbGFwdG9wfGVufDF8fHx8MTc2NDE0MzkwMXww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      description: '$850 · Excellent condition, includes charger',
-    },
-  },
-  {
-    id: 'conv_2',
-    otherUser: {
-      name: 'Michael Rodriguez',
-      avatar: 'M',
-    },
-    lastMessage: {
-      text: 'Perfect! Count me in 👍',
-      timestamp: Date.now() - 85600000,
-      isFromMe: true,
-      unread: false,
-    },
-    context: 'Re: Career Fair 2025',
-    unreadCount: 0,
-    originalPost: {
-      type: 'event' as const,
-      title: 'Career Fair 2025',
-      image: 'https://images.unsplash.com/photo-1633110007230-0dd08905731a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjYXJlZXIlMjBmYWlyJTIwYnVzaW5lc3N8ZW58MXx8fHwxNzY0MjA0NDMzfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      description: 'March 15, 2025 · 9:00 AM · Student Union',
-    },
-  },
-  {
-    id: 'conv_3',
-    otherUser: {
-      name: 'Emma Johnson',
-      avatar: 'E',
-    },
-    lastMessage: {
-      text: 'No worries! Thanks for letting me know',
-      timestamp: Date.now() - 172400000,
-      isFromMe: true,
-      unread: false,
-    },
-    context: 'Re: Calculus Textbook - 8th Edition',
-    unreadCount: 0,
-    originalPost: {
-      type: 'marketplace' as const,
-      title: 'Calculus Textbook - 8th Edition',
-      image: 'https://images.unsplash.com/photo-1509228468518-180dd4864904?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjYWxjdWx1cyUyMHRleHRib29rJTIwbWF0aGVtYXRpY3N8ZW58MXx8fHwxNzY0MjA0NDMzfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      description: '$45 · Like new, minimal highlighting',
-    },
-  },
-  {
-    id: 'conv_4',
-    otherUser: {
-      name: 'Alex Kim',
-      avatar: 'A',
-    },
-    lastMessage: {
-      text: 'We\'ll have free pizza too 🍕',
-      timestamp: Date.now() - 3600000,
-      isFromMe: false,
-      unread: true,
-    },
-    context: 'Re: Tech Talk: AI in Healthcare',
-    unreadCount: 1,
-    originalPost: {
-      type: 'event' as const,
-      title: 'Tech Talk: AI in Healthcare',
-      image: 'https://images.unsplash.com/photo-1582192904915-d89c7250b235?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0ZWNoJTIwY29uZmVyZW5jZSUyMHByZXNlbnRhdGlvbnxlbnwxfHx8fDE3NjQxMzQwNzl8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      description: 'Tonight at 6:00 PM · Engineering Bldg 201',
-    },
-  },
-  {
-    id: 'conv_5',
-    otherUser: {
-      name: 'Olivia Martinez',
-      avatar: 'O',
-    },
-    lastMessage: {
-      text: 'Sure! Saturday afternoon works for me',
-      timestamp: Date.now() - 431400000,
-      isFromMe: false,
-      unread: false,
-    },
-    context: 'Re: Guitar - Acoustic Yamaha',
-    unreadCount: 0,
-    originalPost: {
-      type: 'marketplace' as const,
-      title: 'Guitar - Acoustic Yamaha',
-      image: 'https://images.unsplash.com/photo-1625873378628-2ca373964b39?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhY291c3RpYyUyMGd1aXRhciUyMHlhbWFoYXxlbnwxfHx8fDE3NjQyMDQ0MzR8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
-      description: '$180 · Great for beginners',
-    },
-  },
-];
-
-// Sample messages for each conversation
-const sampleMessages: Record<string, any[]> = {
-  conv_1: [
-    {
-      id: 'msg_1',
-      text: 'Hi! Is the MacBook still available?',
-      timestamp: Date.now() - 7200000,
-      isFromMe: true,
-    },
-    {
-      id: 'msg_2',
-      text: 'Yes, it is! Are you interested?',
-      timestamp: Date.now() - 7000000,
-      isFromMe: false,
-    },
-    {
-      id: 'msg_3',
-      text: 'Definitely! Can I see it tomorrow?',
-      timestamp: Date.now() - 6900000,
-      isFromMe: true,
-    },
-    {
-      id: 'msg_4',
-      text: 'Sure! I\'m free after 3pm. How about meeting at the library?',
-      timestamp: Date.now() - 1800000,
-      isFromMe: false,
-    },
-    {
-      id: 'msg_5',
-      text: 'Does that work for you?',
-      timestamp: Date.now() - 1200000,
-      isFromMe: false,
-    },
-  ],
-  conv_2: [
-    {
-      id: 'msg_6',
-      text: 'Hey! I\'m organizing the Career Fair. Would you be interested in helping out?',
-      timestamp: Date.now() - 86400000,
-      isFromMe: false,
-    },
-    {
-      id: 'msg_7',
-      text: 'That sounds great! What do you need help with?',
-      timestamp: Date.now() - 86000000,
-      isFromMe: true,
-    },
-    {
-      id: 'msg_8',
-      text: 'Mainly greeting companies and helping with setup. It would be from 8am-12pm.',
-      timestamp: Date.now() - 85800000,
-      isFromMe: false,
-    },
-    {
-      id: 'msg_9',
-      text: 'Perfect! Count me in 👍',
-      timestamp: Date.now() - 85600000,
-      isFromMe: true,
-    },
-  ],
-  conv_3: [
-    {
-      id: 'msg_10',
-      text: 'Hi Emma! Is the Calculus textbook still available?',
-      timestamp: Date.now() - 172800000,
-      isFromMe: true,
-    },
-    {
-      id: 'msg_11',
-      text: 'Sorry, I just sold it yesterday 😕',
-      timestamp: Date.now() - 172600000,
-      isFromMe: false,
-    },
-    {
-      id: 'msg_12',
-      text: 'No worries! Thanks for letting me know',
-      timestamp: Date.now() - 172400000,
-      isFromMe: true,
-    },
-  ],
-  conv_4: [
-    {
-      id: 'msg_13',
-      text: 'Hey Alex! I saw your tech talk event. What time does it start?',
-      timestamp: Date.now() - 259200000,
-      isFromMe: true,
-    },
-    {
-      id: 'msg_14',
-      text: 'It starts at 6pm in the Engineering building, room 201!',
-      timestamp: Date.now() - 259000000,
-      isFromMe: false,
-    },
-    {
-      id: 'msg_15',
-      text: 'We\'ll have free pizza too 🍕',
-      timestamp: Date.now() - 3600000,
-      isFromMe: false,
-    },
-  ],
-  conv_5: [
-    {
-      id: 'msg_16',
-      text: 'Hi! I\'m interested in the guitar. Is it good for beginners?',
-      timestamp: Date.now() - 432000000,
-      isFromMe: true,
-    },
-    {
-      id: 'msg_17',
-      text: 'Yes! It\'s perfect for beginners. I learned on this guitar myself',
-      timestamp: Date.now() - 431800000,
-      isFromMe: false,
-    },
-    {
-      id: 'msg_18',
-      text: 'Awesome! Can we meet this weekend?',
-      timestamp: Date.now() - 431600000,
-      isFromMe: true,
-    },
-    {
-      id: 'msg_19',
-      text: 'Sure! Saturday afternoon works for me',
-      timestamp: Date.now() - 431400000,
-      isFromMe: false,
-    },
-  ],
-};
+import { useChat } from '../utils/chatContext';
+import { useAuth } from '../utils/authContext';
 
 export const MessagesPage: React.FC = () => {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [messageText, setMessageText] = useState('');
   const [selectedTab, setSelectedTab] = useState('all');
 
-  const selectedConversation = sampleConversations.find(
-    (conv) => conv.id === selectedConversationId
-  );
+  const { conversations: liveConversations, getConversationMessages, sendMessage } = useChat();
+  const { currentUser } = useAuth();
 
-  // Filter conversations based on tab
-  const filteredConversations = selectedTab === 'unread' 
-    ? sampleConversations.filter(conv => conv.unreadCount > 0)
-    : sampleConversations;
+  const allConversations = liveConversations.map(c => {
+    const other = c.participants.find(p => p.userId !== currentUser?.id);
+    return {
+      id: c.id,
+      otherUser: {
+        name: other?.userName ?? 'Unknown',
+        avatar: (other?.userName ?? 'U').charAt(0).toUpperCase(),
+      },
+      lastMessage: c.lastMessage
+        ? { text: c.lastMessage.content, timestamp: c.lastMessage.timestamp, isFromMe: c.lastMessage.senderId === currentUser?.id, unread: !c.lastMessage.read }
+        : { text: '', timestamp: c.createdAt, isFromMe: false, unread: false },
+      context: c.context ? `Re: ${c.context.itemTitle}` : undefined,
+      unreadCount: c.unreadCount,
+      originalPost: c.context
+        ? { type: c.context.type as 'marketplace' | 'event', title: c.context.itemTitle, image: '', description: '' }
+        : undefined,
+    };
+  });
+
+  const selectedConversation = allConversations.find(c => c.id === selectedConversationId);
+
+  const filteredConversations = selectedTab === 'unread'
+    ? allConversations.filter(c => c.unreadCount > 0)
+    : allConversations;
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -276,10 +60,19 @@ export const MessagesPage: React.FC = () => {
   };
 
   const handleSend = () => {
-    if (!messageText.trim()) return;
-    // In a real app, this would send the message
+    if (!messageText.trim() || !selectedConversationId) return;
+    sendMessage(selectedConversationId, messageText.trim());
     setMessageText('');
   };
+
+  const detailMessages = selectedConversationId
+    ? getConversationMessages(selectedConversationId).map(m => ({
+        id: m.id,
+        text: m.content,
+        timestamp: m.timestamp,
+        isFromMe: m.senderId === currentUser?.id,
+      }))
+    : [];
 
   // If viewing a conversation (mobile or desktop detail view)
   if (selectedConversationId && selectedConversation) {
@@ -367,7 +160,7 @@ export const MessagesPage: React.FC = () => {
         {/* Messages - 640px max-width */}
         <main className="max-w-[640px] mx-auto pb-20">
           <div className="px-4 py-6 space-y-4">
-            {sampleMessages[selectedConversationId]?.map((message) => (
+            {detailMessages.map((message) => (
               <div
                 key={message.id}
                 className={`flex ${message.isFromMe ? 'justify-end' : 'justify-start'}`}

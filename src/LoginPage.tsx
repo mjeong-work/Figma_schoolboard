@@ -6,7 +6,7 @@ import { Label } from './components/ui/label';
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,7 +14,7 @@ export default function LoginPage() {
   const handleLogin = async () => {
     setError('');
     setLoading(true);
-    const result = await login(email, password);
+    const result = await login(username, password);
     setLoading(false);
     if (!result.success) {
       setError(result.message);
@@ -31,12 +31,12 @@ export default function LoginPage() {
 
         <div className="bg-white border border-[#e5e5e5] rounded-xl p-8 space-y-4">
           <div className="space-y-2">
-            <Label>Email</Label>
+            <Label>Username</Label>
             <Input
-              type="email"
-              placeholder="you@university.edu"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              placeholder="your_username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
             />
           </div>
 
@@ -64,7 +64,7 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign In'}
           </Button>
 
-          <div className="text-center">
+          <div className="text-center space-y-2">
             <p className="text-sm text-[#666]">
               Don't have an account?{' '}
               <button
@@ -72,6 +72,14 @@ export default function LoginPage() {
                 className="text-[#0b5fff] hover:underline"
               >
                 Register
+              </button>
+            </p>
+            <p className="text-sm">
+              <button
+                onClick={() => (window.location.hash = '#/forgot-password')}
+                className="text-[#666] hover:text-[#0b5fff] hover:underline"
+              >
+                Forgot password?
               </button>
             </p>
           </div>

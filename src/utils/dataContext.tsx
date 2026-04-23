@@ -63,23 +63,24 @@ interface DataContextType {
   posts: Post[];
   events: Event[];
   marketplaceItems: MarketplaceItem[];
-  addPost: (post: Omit<Post, 'id' | 'date' | 'likes' | 'comments' | 'authorId' | 'author' | 'verified'>) => void;
-  deletePost: (postId: string) => void;
-  toggleLikePost: (postId: string) => void;
-  addCommentToPost: (postId: string, text: string) => void;
-  deleteCommentFromPost: (postId: string, commentId: string) => void;
+  addPost: (post: Omit<Post, 'id' | 'date' | 'likes' | 'comments' | 'authorId' | 'author' | 'verified'>) => Promise<void>;
+  updatePost: (postId: string, updates: { title?: string; content?: string; image?: string | null; category?: string }) => Promise<void>;
+  deletePost: (postId: string) => Promise<void>;
+  toggleLikePost: (postId: string) => Promise<void>;
+  addCommentToPost: (postId: string, text: string) => Promise<void>;
+  deleteCommentFromPost: (postId: string, commentId: string) => Promise<void>;
   isPostLiked: (postId: string) => boolean;
-  addEvent: (event: Omit<Event, 'id' | 'likes' | 'comments' | 'participants' | 'authorId' | 'author'>) => void;
-  deleteEvent: (eventId: string) => void;
-  toggleLikeEvent: (eventId: string) => void;
-  addCommentToEvent: (eventId: string, text: string) => void;
-  toggleRSVPEvent: (eventId: string) => void;
+  addEvent: (event: Omit<Event, 'id' | 'likes' | 'comments' | 'participants' | 'authorId' | 'author'>) => Promise<void>;
+  deleteEvent: (eventId: string) => Promise<void>;
+  toggleLikeEvent: (eventId: string) => Promise<void>;
+  addCommentToEvent: (eventId: string, text: string) => Promise<void>;
+  toggleRSVPEvent: (eventId: string) => Promise<void>;
   isEventLiked: (eventId: string) => boolean;
   hasRSVPed: (eventId: string) => boolean;
-  addMarketplaceItem: (item: Omit<MarketplaceItem, 'id' | 'postedDate' | 'views' | 'savedBy' | 'seller'> & { seller: Omit<MarketplaceItem['seller'], 'id'> }) => void;
-  deleteMarketplaceItem: (itemId: string) => void;
-  toggleSaveItem: (itemId: string) => void;
-  incrementItemViews: (itemId: string) => void;
+  addMarketplaceItem: (item: Omit<MarketplaceItem, 'id' | 'postedDate' | 'views' | 'savedBy' | 'seller'> & { seller: Omit<MarketplaceItem['seller'], 'id'> }) => Promise<void>;
+  deleteMarketplaceItem: (itemId: string) => Promise<void>;
+  toggleSaveItem: (itemId: string) => Promise<void>;
+  incrementItemViews: (itemId: string) => Promise<void>;
   isItemSaved: (itemId: string) => boolean;
   getUserPosts: () => Post[];
   getUserEvents: () => Event[];
@@ -136,15 +137,52 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setPosts(formatted);
   };
 
+  // Fetch marketplace items from Supabase
+  const fetchMarketplaceItems = async () => {
+    const { data, error } = await supabase
+      .from('marketplace_items')
+      .select(`
+        *,
+        profiles!marketplace_items_seller_id_fkey (name, verified),
+        marketplace_saves (user_id)
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) { console.error('[fetchMarketplaceItems]', error); return; }
+
+    const formatted: MarketplaceItem[] = (data || []).map((item: any) => ({
+      id: item.id,
+      title: item.title,
+      category: item.category,
+      price: Number(item.price),
+      condition: item.condition,
+      description: item.description,
+      image: item.image_url || '',
+      seller: {
+        name: item.profiles?.name || 'Unknown',
+        contact: item.contact,
+        verified: item.profiles?.verified || false,
+        id: item.seller_id,
+      },
+      postedDate: item.created_at?.split('T')[0],
+      views: item.views,
+      savedBy: (item.marketplace_saves || []).map((s: any) => s.user_id),
+    }));
+
+    setMarketplaceItems(formatted);
+  };
+
   useEffect(() => {
     if (user) {
       fetchPosts();
+      fetchEvents();
+      fetchMarketplaceItems();
     }
   }, [user]);
 
   // Posts
   const addPost = async (postData: Omit<Post, 'id' | 'date' | 'likes' | 'comments' | 'authorId' | 'author' | 'verified'>) => {
-    if (!user) return;
+    if (!user) throw new Error('Not authenticated');
     const { error } = await supabase.from('posts').insert({
       title: postData.title,
       content: postData.content,
@@ -152,40 +190,99 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       category: postData.category,
       author_id: user.id,
     });
-    if (!error) fetchPosts();
+    if (error) {
+      console.error('[addPost] Supabase error:', error);
+      throw new Error(error.message);
+    }
+    await fetchPosts();
+  };
+
+  const updatePost = async (postId: string, updates: { title?: string; content?: string; image?: string | null; category?: string }) => {
+    if (!user) throw new Error('Not authenticated');
+
+    // 1. Read current record for history snapshot
+    const { data: current, error: fetchError } = await supabase
+      .from('posts')
+      .select('title, content, image_url, category')
+      .eq('id', postId)
+      .single();
+    if (fetchError || !current) {
+      console.error('[updatePost] Could not read current post for history:', fetchError);
+      throw new Error('Could not read current post before editing.');
+    }
+
+    // 2. Insert pre-edit snapshot into history
+    const { error: historyError } = await supabase.from('post_history').insert({
+      post_id: postId,
+      edited_by: user.id,
+      prev_title: current.title,
+      prev_content: current.content,
+      prev_image_url: current.image_url,
+      prev_category: current.category,
+    });
+    if (historyError) console.error('[updatePost] history insert error:', historyError);
+
+    // 3. Apply the update
+    const dbUpdates: Record<string, any> = {};
+    if (updates.title !== undefined) dbUpdates.title = updates.title;
+    if (updates.content !== undefined) dbUpdates.content = updates.content;
+    if (updates.image !== undefined) dbUpdates.image_url = updates.image;
+    if (updates.category !== undefined) dbUpdates.category = updates.category;
+    const { data, error } = await supabase.from('posts').update(dbUpdates).eq('id', postId).select('id');
+    if (error) {
+      console.error('[updatePost] Supabase error:', error);
+      throw new Error(error.message);
+    }
+    if (!data || data.length === 0) {
+      console.warn('[updatePost] No rows updated — RLS may be blocking this write for postId:', postId);
+      throw new Error('Update was rejected — you may not have permission to edit this post.');
+    }
+    await fetchPosts();
   };
 
   const deletePost = async (postId: string) => {
-    if (!user) return;
-    await supabase.from('posts').delete().eq('id', postId);
-    fetchPosts();
+    if (!user) throw new Error('Not authenticated');
+    const { data, error } = await supabase.from('posts').delete().eq('id', postId).select('id');
+    if (error) {
+      console.error('[deletePost] Supabase error:', error);
+      throw new Error(error.message);
+    }
+    if (!data || data.length === 0) {
+      console.warn('[deletePost] No rows deleted — RLS may be blocking this write for postId:', postId);
+      throw new Error('Delete was rejected — you may not have permission to delete this post.');
+    }
+    await fetchPosts();
   };
 
   const toggleLikePost = async (postId: string) => {
     if (!user) return;
     const liked = isPostLiked(postId);
-    if (liked) {
-      await supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', user.id);
-    } else {
-      await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id });
-    }
-    fetchPosts();
+    const { error } = liked
+      ? await supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', user.id)
+      : await supabase.from('post_likes').insert({ post_id: postId, user_id: user.id });
+    if (error) console.error('[toggleLikePost] Supabase error:', error);
+    await fetchPosts();
   };
 
   const addCommentToPost = async (postId: string, text: string) => {
     if (!user || !text.trim()) return;
-    await supabase.from('post_comments').insert({
+    const { error } = await supabase.from('post_comments').insert({
       post_id: postId,
       author_id: user.id,
       text: text.trim(),
     });
-    fetchPosts();
+    if (error) {
+      console.error('[addCommentToPost] Supabase error:', error);
+      throw new Error(error.message);
+    }
+    await fetchPosts();
   };
 
   const deleteCommentFromPost = async (postId: string, commentId: string) => {
     if (!user) return;
-    await supabase.from('post_comments').delete().eq('id', commentId);
-    fetchPosts();
+    const { error } = await supabase.from('post_comments').delete().eq('id', commentId);
+    if (error) console.error('[deleteCommentFromPost] Supabase error:', error);
+    await fetchPosts();
   };
 
   const isPostLiked = (postId: string): boolean => {
@@ -194,66 +291,99 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return post ? post.likes.includes(user.id) : false;
   };
 
-  // Events (still local for now)
-  const addEvent = (eventData: Omit<Event, 'id' | 'likes' | 'comments' | 'participants' | 'authorId' | 'author'>) => {
-    if (!user) return;
-    const newEvent: Event = {
-      ...eventData,
-      id: Date.now().toString(),
-      author: user.name,
-      authorId: user.id,
-      participants: [],
-      likes: [],
-      comments: [],
-    };
-    setEvents(prev => [newEvent, ...prev]);
-  };
+  // Fetch events from Supabase
+  const fetchEvents = async () => {
+    const { data, error } = await supabase
+      .from('events')
+      .select(`
+        *,
+        profiles!events_author_id_fkey (name),
+        event_rsvps (user_id),
+        event_likes (user_id),
+        event_comments (id, text, created_at, profiles!event_comments_author_id_fkey (name, id))
+      `)
+      .order('date', { ascending: true });
 
-  const deleteEvent = (eventId: string) => {
-    setEvents(prev => prev.filter(e => e.id !== eventId));
-  };
+    if (error) { console.error('[fetchEvents]', error); return; }
 
-  const toggleLikeEvent = (eventId: string) => {
-    if (!user) return;
-    setEvents(prev => prev.map(event => {
-      if (event.id === eventId) {
-        const likes = event.likes.includes(user.id)
-          ? event.likes.filter(id => id !== user.id)
-          : [...event.likes, user.id];
-        return { ...event, likes };
-      }
-      return event;
+    const formatted: Event[] = (data || []).map((e: any) => ({
+      id: e.id,
+      title: e.title,
+      date: e.date,
+      time: e.time,
+      venue: e.venue,
+      description: e.description,
+      image: e.image_url || '',
+      category: e.category,
+      author: e.profiles?.name || 'Unknown',
+      authorId: e.author_id,
+      participants: (e.event_rsvps || []).map((r: any) => r.user_id),
+      likes: (e.event_likes || []).map((l: any) => l.user_id),
+      comments: (e.event_comments || []).map((c: any) => ({
+        id: c.id,
+        text: c.text,
+        author: c.profiles?.name || 'Anonymous',
+        authorId: c.profiles?.id || '',
+        date: c.created_at?.split('T')[0],
+      })),
     }));
+
+    setEvents(formatted);
   };
 
-  const addCommentToEvent = (eventId: string, text: string) => {
+  // Events — Supabase-backed
+  const addEvent = async (eventData: Omit<Event, 'id' | 'likes' | 'comments' | 'participants' | 'authorId' | 'author'>) => {
+    if (!user) throw new Error('Not authenticated');
+    const { error } = await supabase.from('events').insert({
+      title: eventData.title,
+      date: eventData.date,
+      time: eventData.time,
+      venue: eventData.venue,
+      description: eventData.description,
+      image_url: eventData.image || null,
+      category: eventData.category ?? null,
+      author_id: user.id,
+    });
+    if (error) { console.error('[addEvent]', error); throw new Error(error.message); }
+    await fetchEvents();
+  };
+
+  const deleteEvent = async (eventId: string) => {
+    if (!user) throw new Error('Not authenticated');
+    const { error } = await supabase.from('events').delete().eq('id', eventId);
+    if (error) { console.error('[deleteEvent]', error); throw new Error(error.message); }
+    await fetchEvents();
+  };
+
+  const toggleLikeEvent = async (eventId: string) => {
+    if (!user) return;
+    const liked = isEventLiked(eventId);
+    const { error } = liked
+      ? await supabase.from('event_likes').delete().eq('event_id', eventId).eq('user_id', user.id)
+      : await supabase.from('event_likes').insert({ event_id: eventId, user_id: user.id });
+    if (error) console.error('[toggleLikeEvent]', error);
+    await fetchEvents();
+  };
+
+  const addCommentToEvent = async (eventId: string, text: string) => {
     if (!user || !text.trim()) return;
-    const newComment: Comment = {
-      id: Date.now().toString(),
-      author: user.name,
-      authorId: user.id,
+    const { error } = await supabase.from('event_comments').insert({
+      event_id: eventId,
+      author_id: user.id,
       text: text.trim(),
-      date: new Date().toISOString().split('T')[0],
-    };
-    setEvents(prev => prev.map(event => {
-      if (event.id === eventId) {
-        return { ...event, comments: [...event.comments, newComment] };
-      }
-      return event;
-    }));
+    });
+    if (error) { console.error('[addCommentToEvent]', error); throw new Error(error.message); }
+    await fetchEvents();
   };
 
-  const toggleRSVPEvent = (eventId: string) => {
+  const toggleRSVPEvent = async (eventId: string) => {
     if (!user) return;
-    setEvents(prev => prev.map(event => {
-      if (event.id === eventId) {
-        const participants = event.participants.includes(user.id)
-          ? event.participants.filter(id => id !== user.id)
-          : [...event.participants, user.id];
-        return { ...event, participants };
-      }
-      return event;
-    }));
+    const rsvped = hasRSVPed(eventId);
+    const { error } = rsvped
+      ? await supabase.from('event_rsvps').delete().eq('event_id', eventId).eq('user_id', user.id)
+      : await supabase.from('event_rsvps').insert({ event_id: eventId, user_id: user.id });
+    if (error) console.error('[toggleRSVPEvent]', error);
+    await fetchEvents();
   };
 
   const isEventLiked = (eventId: string): boolean => {
@@ -268,42 +398,57 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return event ? event.participants.includes(user.id) : false;
   };
 
-  // Marketplace (still local for now)
-  const addMarketplaceItem = (itemData: any) => {
+  // Marketplace — Supabase-backed
+  const addMarketplaceItem = async (itemData: any) => {
+    if (!user) throw new Error('Not authenticated');
+    const { error } = await supabase.from('marketplace_items').insert({
+      title: itemData.title,
+      category: itemData.category,
+      price: itemData.price,
+      condition: itemData.condition,
+      description: itemData.description,
+      image_url: itemData.image || null,
+      seller_id: user.id,
+      contact: itemData.seller.contact,
+    });
+    if (error) {
+      console.error('[addMarketplaceItem]', error);
+      throw new Error(error.message);
+    }
+    await fetchMarketplaceItems();
+  };
+
+  const deleteMarketplaceItem = async (itemId: string) => {
+    if (!user) throw new Error('Not authenticated');
+    const { data, error } = await supabase.from('marketplace_items').delete().eq('id', itemId).select('id');
+    if (error) {
+      console.error('[deleteMarketplaceItem]', error);
+      throw new Error(error.message);
+    }
+    if (!data || data.length === 0) {
+      throw new Error('Delete rejected — you may not have permission.');
+    }
+    await fetchMarketplaceItems();
+  };
+
+  const toggleSaveItem = async (itemId: string) => {
     if (!user) return;
-    const newItem: MarketplaceItem = {
-      ...itemData,
-      id: Date.now().toString(),
-      postedDate: new Date().toISOString().split('T')[0],
-      views: 0,
-      savedBy: [],
-      seller: { ...itemData.seller, id: user.id },
-    };
-    setMarketplaceItems(prev => [newItem, ...prev]);
+    const saved = isItemSaved(itemId);
+    const { error } = saved
+      ? await supabase.from('marketplace_saves').delete().eq('item_id', itemId).eq('user_id', user.id)
+      : await supabase.from('marketplace_saves').insert({ item_id: itemId, user_id: user.id });
+    if (error) console.error('[toggleSaveItem]', error);
+    await fetchMarketplaceItems();
   };
 
-  const deleteMarketplaceItem = (itemId: string) => {
-    setMarketplaceItems(prev => prev.filter(item => item.id !== itemId));
-  };
-
-  const toggleSaveItem = (itemId: string) => {
-    if (!user) return;
-    setMarketplaceItems(prev => prev.map(item => {
-      if (item.id === itemId) {
-        const savedBy = item.savedBy.includes(user.id)
-          ? item.savedBy.filter(id => id !== user.id)
-          : [...item.savedBy, user.id];
-        return { ...item, savedBy };
-      }
-      return item;
-    }));
-  };
-
-  const incrementItemViews = (itemId: string) => {
-    setMarketplaceItems(prev => prev.map(item => {
-      if (item.id === itemId) return { ...item, views: item.views + 1 };
-      return item;
-    }));
+  const incrementItemViews = async (itemId: string) => {
+    // Optimistic local update for immediate feedback
+    setMarketplaceItems(prev => prev.map(item =>
+      item.id === itemId ? { ...item, views: item.views + 1 } : item
+    ));
+    // Persist via RPC (SECURITY DEFINER bypasses RLS)
+    const { error } = await supabase.rpc('increment_marketplace_views', { item_id: itemId });
+    if (error) console.error('[incrementItemViews]', error);
   };
 
   const isItemSaved = (itemId: string): boolean => {
@@ -326,7 +471,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <DataContext.Provider value={{
       posts, events, marketplaceItems,
-      addPost, deletePost, toggleLikePost, addCommentToPost, deleteCommentFromPost, isPostLiked,
+      addPost, updatePost, deletePost, toggleLikePost, addCommentToPost, deleteCommentFromPost, isPostLiked,
       addEvent, deleteEvent, toggleLikeEvent, addCommentToEvent, toggleRSVPEvent, isEventLiked, hasRSVPed,
       addMarketplaceItem, deleteMarketplaceItem, toggleSaveItem, incrementItemViews, isItemSaved,
       getUserPosts, getUserEvents, getUserMarketplaceItems, getUserSavedItems, getUserStats,

@@ -10,6 +10,7 @@ import AdminPage from "./AdminPage";
 import EditProfilePage from "./EditProfilePage";
 import RegisterPage from "./RegisterPage";
 import LoginPage from "./LoginPage";
+import ForgotPasswordPage from "./ForgotPasswordPage";
 import VerificationPendingPage from "./VerificationPendingPage";
 import { MessagesPage } from "./components/MessagesPage";
 import { ChatManager } from "./components/ChatManager";
@@ -25,7 +26,8 @@ type PageType =
   | "messages"
   | "register"
   | "verification"
-  | "login";
+  | "login"
+  | "forgot-password";
 
 function AppRouter() {
   const { user, isAuthenticated } = useAuth();
@@ -40,6 +42,11 @@ function AppRouter() {
       // Auth pages (accessible when not authenticated)
       if (hash === "register") {
         setCurrentPage("register");
+        return;
+      }
+
+      if (hash === "forgot-password") {
+        setCurrentPage("forgot-password");
         return;
       }
 
@@ -74,7 +81,12 @@ function AppRouter() {
       } else if (hash === "profile") {
         setCurrentPage("profile");
       } else if (hash === "admin") {
-        setCurrentPage("admin");
+        if (user?.role === 'Administrator') {
+          setCurrentPage("admin");
+        } else {
+          setCurrentPage("community");
+          window.location.hash = "#community";
+        }
       } else if (hash === "edit-profile") {
         setCurrentPage("edit-profile");
       } else if (hash === "messages") {
@@ -103,6 +115,10 @@ function AppRouter() {
 
   if (currentPage === "register") {
     return <RegisterPage />;
+  }
+
+  if (currentPage === "forgot-password") {
+    return <ForgotPasswordPage />;
   }
 
   if (currentPage === "verification") {

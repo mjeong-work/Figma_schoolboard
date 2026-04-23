@@ -10,6 +10,7 @@ export default function RegisterPage() {
   const { register } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
+    username: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -26,6 +27,11 @@ export default function RegisterPage() {
     setError('');
 
     // Validation
+    if (!/^[a-zA-Z0-9]{4,}$/.test(formData.username)) {
+      setError('Username must be at least 4 characters and contain only letters and numbers');
+      return;
+    }
+
     if (formData.password.length < 6) {
       setError('Password must be at least 6 characters long');
       return;
@@ -50,6 +56,7 @@ export default function RegisterPage() {
 
     const result = await register({
       name: formData.name,
+      username: formData.username,
       email: formData.email,
       password: formData.password,
       role: formData.role,
@@ -101,9 +108,23 @@ export default function RegisterPage() {
               />
             </div>
 
-            {/* Email */}
+            {/* Username */}
             <div className="space-y-2">
-              <Label htmlFor="email">Campus Email</Label>
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                type="text"
+                placeholder="e.g. johndo3"
+                value={formData.username}
+                onChange={(e) => updateFormData('username', e.target.value)}
+                required
+              />
+              <p className="text-xs text-[#666]">Letters and numbers only, min 4 characters. This is your login ID and cannot be changed.</p>
+            </div>
+
+            {/* Recovery Email */}
+            <div className="space-y-2">
+              <Label htmlFor="email">Recovery Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -112,7 +133,7 @@ export default function RegisterPage() {
                 onChange={(e) => updateFormData('email', e.target.value)}
                 required
               />
-              <p className="text-xs text-[#666]">Must be a valid .edu email address</p>
+              <p className="text-xs text-[#666]">Used for password recovery and communications. Not shown to other users.</p>
             </div>
 
             {/* Role */}

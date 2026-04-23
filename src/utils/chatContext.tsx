@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { useAuth } from './authContext';
+import { supabase } from './supabaseClient';
 
 export interface Message {
   id: string;
@@ -31,7 +32,8 @@ export interface Conversation {
 interface ChatContextType {
   conversations: Conversation[];
   messages: Message[];
-  getOrCreateConversation: (otherUserId: string, otherUserName: string, context?: Conversation['context']) => string;
+  // NOTE: async — callers must await before calling sendMessage
+  getOrCreateConversation: (otherUserId: string, otherUserName: string, context?: Conversation['context']) => Promise<string>;
   sendMessage: (conversationId: string, content: string, imageUrl?: string) => void;
   markAsRead: (conversationId: string) => void;
   getConversationMessages: (conversationId: string) => Message[];
@@ -42,305 +44,201 @@ interface ChatContextType {
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
-// Generate sample data function
-const generateSampleData = (currentUserId: string, currentUserName: string) => {
-  const now = Date.now();
-
-  const sampleMessages: Message[] = [
-    // Sarah Chen - MacBook conversation
-    {
-      id: 'msg_1',
-      conversationId: 'conv_1',
-      senderId: currentUserId,
-      senderName: currentUserName,
-      content: 'Hi! Is the MacBook still available?',
-      timestamp: now - 7200000,
-      read: true,
-    },
-    {
-      id: 'msg_2',
-      conversationId: 'conv_1',
-      senderId: 'user_sarah',
-      senderName: 'Sarah Chen',
-      content: 'Yes, it is! Are you interested?',
-      timestamp: now - 7000000,
-      read: true,
-    },
-    {
-      id: 'msg_3',
-      conversationId: 'conv_1',
-      senderId: currentUserId,
-      senderName: currentUserName,
-      content: 'Definitely! Can I see it tomorrow?',
-      timestamp: now - 6900000,
-      read: true,
-    },
-    {
-      id: 'msg_4',
-      conversationId: 'conv_1',
-      senderId: 'user_sarah',
-      senderName: 'Sarah Chen',
-      content: 'Sure! I\'m free after 3pm. How about meeting at the library?',
-      timestamp: now - 1800000,
-      read: false,
-    },
-    {
-      id: 'msg_5',
-      conversationId: 'conv_1',
-      senderId: 'user_sarah',
-      senderName: 'Sarah Chen',
-      content: 'Does that work for you?',
-      timestamp: now - 1200000,
-      read: false,
-    },
-    // Michael Rodriguez - Career Fair
-    {
-      id: 'msg_6',
-      conversationId: 'conv_2',
-      senderId: 'user_michael',
-      senderName: 'Michael Rodriguez',
-      content: 'Hey! I\'m organizing the Career Fair. Would you be interested in helping out?',
-      timestamp: now - 86400000,
-      read: true,
-    },
-    {
-      id: 'msg_7',
-      conversationId: 'conv_2',
-      senderId: currentUserId,
-      senderName: currentUserName,
-      content: 'That sounds great! What do you need help with?',
-      timestamp: now - 86000000,
-      read: true,
-    },
-    {
-      id: 'msg_8',
-      conversationId: 'conv_2',
-      senderId: 'user_michael',
-      senderName: 'Michael Rodriguez',
-      content: 'Mainly greeting companies and helping with setup. It would be from 8am-12pm.',
-      timestamp: now - 85800000,
-      read: true,
-    },
-    {
-      id: 'msg_9',
-      conversationId: 'conv_2',
-      senderId: currentUserId,
-      senderName: currentUserName,
-      content: 'Perfect! Count me in 👍',
-      timestamp: now - 85600000,
-      read: true,
-    },
-    // Emma Johnson - Textbook
-    {
-      id: 'msg_10',
-      conversationId: 'conv_3',
-      senderId: currentUserId,
-      senderName: currentUserName,
-      content: 'Hi Emma! Is the Calculus textbook still available?',
-      timestamp: now - 172800000,
-      read: true,
-    },
-    {
-      id: 'msg_11',
-      conversationId: 'conv_3',
-      senderId: 'user_emma',
-      senderName: 'Emma Johnson',
-      content: 'Sorry, I just sold it yesterday 😕',
-      timestamp: now - 172600000,
-      read: true,
-    },
-    {
-      id: 'msg_12',
-      conversationId: 'conv_3',
-      senderId: currentUserId,
-      senderName: currentUserName,
-      content: 'No worries! Thanks for letting me know',
-      timestamp: now - 172400000,
-      read: true,
-    },
-    // Alex Kim - Tech Talk
-    {
-      id: 'msg_13',
-      conversationId: 'conv_4',
-      senderId: currentUserId,
-      senderName: currentUserName,
-      content: 'Hey Alex! I saw your tech talk event. What time does it start?',
-      timestamp: now - 259200000,
-      read: true,
-    },
-    {
-      id: 'msg_14',
-      conversationId: 'conv_4',
-      senderId: 'user_alex',
-      senderName: 'Alex Kim',
-      content: 'It starts at 6pm in the Engineering building, room 201!',
-      timestamp: now - 259000000,
-      read: true,
-    },
-    {
-      id: 'msg_15',
-      conversationId: 'conv_4',
-      senderId: 'user_alex',
-      senderName: 'Alex Kim',
-      content: 'We\'ll have free pizza too 🍕',
-      timestamp: now - 3600000,
-      read: false,
-    },
-    // Olivia Martinez - Guitar
-    {
-      id: 'msg_16',
-      conversationId: 'conv_5',
-      senderId: currentUserId,
-      senderName: currentUserName,
-      content: 'Hi! I\'m interested in the guitar. Is it good for beginners?',
-      timestamp: now - 432000000,
-      read: true,
-    },
-    {
-      id: 'msg_17',
-      conversationId: 'conv_5',
-      senderId: 'user_olivia',
-      senderName: 'Olivia Martinez',
-      content: 'Yes! It\'s perfect for beginners. I learned on this guitar myself',
-      timestamp: now - 431800000,
-      read: true,
-    },
-    {
-      id: 'msg_18',
-      conversationId: 'conv_5',
-      senderId: currentUserId,
-      senderName: currentUserName,
-      content: 'Awesome! Can we meet this weekend?',
-      timestamp: now - 431600000,
-      read: true,
-    },
-    {
-      id: 'msg_19',
-      conversationId: 'conv_5',
-      senderId: 'user_olivia',
-      senderName: 'Olivia Martinez',
-      content: 'Sure! Saturday afternoon works for me',
-      timestamp: now - 431400000,
-      read: true,
-    },
-  ];
-
-  const sampleConversations: Conversation[] = [
-    {
-      id: 'conv_1',
-      participants: [
-        { userId: currentUserId, userName: currentUserName },
-        { userId: 'user_sarah', userName: 'Sarah Chen' },
-      ],
-      lastMessage: sampleMessages[4],
-      unreadCount: 2,
-      createdAt: now - 7200000,
-      context: {
-        type: 'marketplace',
-        itemId: '3',
-        itemTitle: 'MacBook Pro 13" 2020',
-      },
-    },
-    {
-      id: 'conv_2',
-      participants: [
-        { userId: currentUserId, userName: currentUserName },
-        { userId: 'user_michael', userName: 'Michael Rodriguez' },
-      ],
-      lastMessage: sampleMessages[8],
-      unreadCount: 0,
-      createdAt: now - 86400000,
-      context: {
-        type: 'event',
-        itemId: 'evt_1',
-        itemTitle: 'Career Fair 2025',
-      },
-    },
-    {
-      id: 'conv_3',
-      participants: [
-        { userId: currentUserId, userName: currentUserName },
-        { userId: 'user_emma', userName: 'Emma Johnson' },
-      ],
-      lastMessage: sampleMessages[11],
-      unreadCount: 0,
-      createdAt: now - 172800000,
-      context: {
-        type: 'marketplace',
-        itemId: '1',
-        itemTitle: 'Calculus Textbook - 8th Edition',
-      },
-    },
-    {
-      id: 'conv_4',
-      participants: [
-        { userId: currentUserId, userName: currentUserName },
-        { userId: 'user_alex', userName: 'Alex Kim' },
-      ],
-      lastMessage: sampleMessages[14],
-      unreadCount: 1,
-      createdAt: now - 259200000,
-      context: {
-        type: 'event',
-        itemId: 'evt_2',
-        itemTitle: 'Tech Talk: AI in Healthcare',
-      },
-    },
-    {
-      id: 'conv_5',
-      participants: [
-        { userId: currentUserId, userName: currentUserName },
-        { userId: 'user_olivia', userName: 'Olivia Martinez' },
-      ],
-      lastMessage: sampleMessages[18],
-      unreadCount: 0,
-      createdAt: now - 432000000,
-      context: {
-        type: 'marketplace',
-        itemId: '5',
-        itemTitle: 'Guitar - Acoustic Yamaha',
-      },
-    },
-  ];
-
-  return { sampleConversations, sampleMessages };
-};
+// Map a raw Supabase messages row → Message
+const rowToMessage = (m: Record<string, any>): Message => ({
+  id: m.id,
+  conversationId: m.conversation_id,
+  senderId: m.sender_id ?? '',
+  senderName: m.sender_name,
+  content: m.content,
+  imageUrl: m.image_url ?? undefined,
+  timestamp: new Date(m.created_at).getTime(),
+  read: m.read,
+});
 
 export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { currentUser } = useAuth();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  // Initialize with sample data immediately
-  const initialData = currentUser
-    ? generateSampleData(currentUser.id, currentUser.displayName)
-    : { sampleConversations: [], sampleMessages: [] };
+  useEffect(() => {
+    if (!currentUser) {
+      setConversations([]);
+      setMessages([]);
+      return;
+    }
 
-  const [conversations, setConversations] = useState<Conversation[]>(initialData.sampleConversations);
-  const [messages, setMessages] = useState<Message[]>(initialData.sampleMessages);
+    loadData(currentUser.id);
+    setupRealtime(currentUser.id);
 
-  const getOrCreateConversation = (
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [currentUser?.id]);
+
+  // ── Load all conversations + messages from Supabase ──────────────────
+  const loadData = async (userId: string) => {
+    // Find which conversations this user is in
+    const { data: participantRows, error: pErr } = await supabase
+      .from('conversation_participants')
+      .select('conversation_id')
+      .eq('user_id', userId);
+
+    if (pErr) { console.error('[loadData] participants:', pErr.message); return; }
+    if (!participantRows?.length) return;
+
+    const convIds = participantRows.map((p) => p.conversation_id);
+
+    // Load conversations with all their participants
+    const { data: convRows, error: cErr } = await supabase
+      .from('conversations')
+      .select('id, created_at, context_type, context_item_id, context_item_title, conversation_participants(user_id, user_name)')
+      .in('id', convIds)
+      .order('created_at', { ascending: false });
+
+    if (cErr) { console.error('[loadData] conversations:', cErr.message); return; }
+
+    // Load all messages for those conversations
+    const { data: msgRows, error: mErr } = await supabase
+      .from('messages')
+      .select('*')
+      .in('conversation_id', convIds)
+      .order('created_at', { ascending: true });
+
+    if (mErr) { console.error('[loadData] messages:', mErr.message); return; }
+
+    const msgs: Message[] = (msgRows ?? []).map(rowToMessage);
+    setMessages(msgs);
+
+    const convs: Conversation[] = (convRows ?? []).map((c) => {
+      const convMsgs = msgs.filter((m) => m.conversationId === c.id);
+      const lastMsg = convMsgs[convMsgs.length - 1];
+      const unreadCount = convMsgs.filter((m) => !m.read && m.senderId !== userId).length;
+
+      return {
+        id: c.id,
+        participants: (c.conversation_participants as any[]).map((p) => ({
+          userId: p.user_id,
+          userName: p.user_name,
+        })),
+        lastMessage: lastMsg,
+        unreadCount,
+        createdAt: new Date(c.created_at).getTime(),
+        context: c.context_type
+          ? { type: c.context_type as 'marketplace' | 'event', itemId: c.context_item_id, itemTitle: c.context_item_title }
+          : undefined,
+      };
+    });
+
+    setConversations(convs);
+  };
+
+  // ── Realtime: receive new messages from other users ───────────────────
+  const setupRealtime = (userId: string) => {
+    const channel = supabase
+      .channel(`chat:${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          const raw = payload.new as Record<string, any>;
+
+          // Own messages are already handled by optimistic update in sendMessage
+          if (raw.sender_id === userId) return;
+
+          const message = rowToMessage(raw);
+
+          setMessages((prev) =>
+            prev.some((m) => m.id === message.id) ? prev : [...prev, message]
+          );
+
+          setConversations((prev) =>
+            prev.map((conv) =>
+              conv.id !== message.conversationId
+                ? conv
+                : { ...conv, lastMessage: message, unreadCount: conv.unreadCount + 1 }
+            )
+          );
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+  };
+
+  // ── getOrCreateConversation ───────────────────────────────────────────
+  const getOrCreateConversation = async (
     otherUserId: string,
     otherUserName: string,
     context?: Conversation['context']
-  ): string => {
+  ): Promise<string> => {
     if (!currentUser) return '';
 
-    const existingConversation = conversations.find((conv) => {
-      const participantIds = conv.participants.map((p) => p.userId);
-      return (
-        participantIds.includes(currentUser.id) &&
-        participantIds.includes(otherUserId) &&
-        participantIds.length === 2
-      );
+    // Fast path: already in local state
+    const existing = conversations.find((conv) => {
+      const ids = conv.participants.map((p) => p.userId);
+      return ids.includes(currentUser.id) && ids.includes(otherUserId) && ids.length === 2;
     });
+    if (existing) return existing.id;
 
-    if (existingConversation) {
-      return existingConversation.id;
+    // Check Supabase in case it was created from another session
+    const { data: myRows } = await supabase
+      .from('conversation_participants')
+      .select('conversation_id')
+      .eq('user_id', currentUser.id);
+
+    if (myRows?.length) {
+      const myIds = myRows.map((r) => r.conversation_id);
+      const { data: otherRows } = await supabase
+        .from('conversation_participants')
+        .select('conversation_id')
+        .eq('user_id', otherUserId)
+        .in('conversation_id', myIds);
+
+      if (otherRows?.length) return otherRows[0].conversation_id;
     }
 
-    const newConversation: Conversation = {
-      id: `conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    // Generate the UUID client-side.
+    // We CANNOT use .select().single() after INSERT because the conversations
+    // SELECT policy requires the user to already be in conversation_participants —
+    // which is only true after the next step. Providing the ID up-front avoids
+    // the post-insert SELECT entirely.
+    const newId = crypto.randomUUID();
+
+    const { error: cErr } = await supabase
+      .from('conversations')
+      .insert({
+        id: newId,
+        context_type: context?.type ?? null,
+        context_item_id: context?.itemId ?? null,
+        context_item_title: context?.itemTitle ?? null,
+      });
+
+    if (cErr) {
+      console.error('[getOrCreateConversation] conversations insert:', cErr.message);
+      return '';
+    }
+
+    const { error: pErr } = await supabase.from('conversation_participants').insert([
+      { conversation_id: newId, user_id: currentUser.id, user_name: currentUser.name },
+      { conversation_id: newId, user_id: otherUserId, user_name: otherUserName },
+    ]);
+
+    if (pErr) {
+      console.error('[getOrCreateConversation] participants insert:', pErr.message);
+      // Clean up the orphaned conversation row so the DB stays consistent
+      await supabase.from('conversations').delete().eq('id', newId);
+      return '';
+    }
+
+    const conversation: Conversation = {
+      id: newId,
       participants: [
-        { userId: currentUser.id, userName: currentUser.displayName },
+        { userId: currentUser.id, userName: currentUser.name },
         { userId: otherUserId, userName: otherUserName },
       ],
       unreadCount: 0,
@@ -348,86 +246,118 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       context,
     };
 
-    setConversations((prev) => [newConversation, ...prev]);
-    return newConversation.id;
+    setConversations((prev) => [conversation, ...prev]);
+    return newId;
   };
 
+  // ── sendMessage (optimistic) ──────────────────────────────────────────
   const sendMessage = (conversationId: string, content: string, imageUrl?: string) => {
     if (!currentUser) return;
 
-    const newMessage: Message = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const optimistic: Message = {
+      id: tempId,
       conversationId,
       senderId: currentUser.id,
-      senderName: currentUser.displayName,
+      senderName: currentUser.name,
       content,
       imageUrl,
       timestamp: Date.now(),
       read: false,
     };
 
-    setMessages((prev) => [...prev, newMessage]);
-
+    // Optimistic update
+    setMessages((prev) => [...prev, optimistic]);
     setConversations((prev) =>
-      prev.map((conv) => {
-        if (conv.id === conversationId) {
-          return { ...conv, lastMessage: newMessage };
-        }
-        return conv;
-      })
+      prev.map((conv) =>
+        conv.id === conversationId ? { ...conv, lastMessage: optimistic } : conv
+      )
     );
+
+    // Persist to Supabase. Do NOT chain .select() — if the post-insert SELECT
+    // fails (e.g. RLS race), we would roll back the optimistic message and the
+    // user would see an empty conversation even though the row was saved.
+    // The optimistic message already has all the data needed to render correctly.
+    supabase
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        sender_id: currentUser.id,
+        sender_name: currentUser.name,
+        content,
+        image_url: imageUrl ?? null,
+        read: false,
+      })
+      .then(({ error }) => {
+        if (error) {
+          console.error('[sendMessage] insert failed:', error.message);
+          // Only roll back if the INSERT itself failed (message was never saved)
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
+          setConversations((prev) =>
+            prev.map((conv) =>
+              conv.id === conversationId && conv.lastMessage?.id === tempId
+                ? { ...conv, lastMessage: undefined }
+                : conv
+            )
+          );
+        }
+      });
   };
 
+  // ── markAsRead ────────────────────────────────────────────────────────
   const markAsRead = (conversationId: string) => {
     if (!currentUser) return;
 
     setMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.conversationId === conversationId && msg.senderId !== currentUser.id) {
-          return { ...msg, read: true };
-        }
-        return msg;
-      })
+      prev.map((m) =>
+        m.conversationId === conversationId && m.senderId !== currentUser.id
+          ? { ...m, read: true }
+          : m
+      )
     );
-
     setConversations((prev) =>
-      prev.map((conv) => {
-        if (conv.id === conversationId) {
-          return { ...conv, unreadCount: 0 };
-        }
-        return conv;
-      })
+      prev.map((conv) =>
+        conv.id === conversationId ? { ...conv, unreadCount: 0 } : conv
+      )
     );
+
+    supabase
+      .from('messages')
+      .update({ read: true })
+      .eq('conversation_id', conversationId)
+      .neq('sender_id', currentUser.id)
+      .eq('read', false)
+      .then(({ error }) => {
+        if (error) console.error('[markAsRead]', error.message);
+      });
   };
 
-  const getConversationMessages = (conversationId: string): Message[] => {
-    return messages
-      .filter((msg) => msg.conversationId === conversationId)
+  // ── getConversationMessages ───────────────────────────────────────────
+  const getConversationMessages = (conversationId: string): Message[] =>
+    messages
+      .filter((m) => m.conversationId === conversationId)
       .sort((a, b) => a.timestamp - b.timestamp);
-  };
 
-  const getConversation = (conversationId: string): Conversation | undefined => {
-    return conversations.find((conv) => conv.id === conversationId);
-  };
+  // ── getConversation ───────────────────────────────────────────────────
+  const getConversation = (conversationId: string): Conversation | undefined =>
+    conversations.find((c) => c.id === conversationId);
 
-  const getTotalUnreadCount = (): number => {
-    if (!currentUser) return 0;
+  // ── getTotalUnreadCount ───────────────────────────────────────────────
+  const getTotalUnreadCount = (): number =>
+    conversations.reduce((sum, conv) => sum + conv.unreadCount, 0);
 
-    return messages.filter(
-      (msg) =>
-        !msg.read &&
-        msg.senderId !== currentUser.id &&
-        conversations.some(
-          (conv) =>
-            conv.id === msg.conversationId &&
-            conv.participants.some((p) => p.userId === currentUser.id)
-        )
-    ).length;
-  };
-
+  // ── deleteConversation ────────────────────────────────────────────────
   const deleteConversation = (conversationId: string) => {
-    setConversations((prev) => prev.filter((conv) => conv.id !== conversationId));
-    setMessages((prev) => prev.filter((msg) => msg.conversationId !== conversationId));
+    setConversations((prev) => prev.filter((c) => c.id !== conversationId));
+    setMessages((prev) => prev.filter((m) => m.conversationId !== conversationId));
+
+    supabase
+      .from('conversations')
+      .delete()
+      .eq('id', conversationId)
+      .then(({ error }) => {
+        if (error) console.error('[deleteConversation]', error.message);
+      });
   };
 
   return (

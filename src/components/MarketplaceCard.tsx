@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Heart, Eye, BadgeCheck, MessageCircle, Trash2, MoreHorizontal } from 'lucide-react';
+import { Heart, Eye, BadgeCheck, MessageCircle, Trash2, MoreHorizontal, Send } from 'lucide-react';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { useData, type MarketplaceItem } from '../utils/dataContext';
 import { useAuth } from '../utils/authContext';
@@ -20,11 +22,14 @@ interface MarketplaceCardProps {
 export function MarketplaceCard({ item }: MarketplaceCardProps) {
   const { user, currentUser } = useAuth();
   const { toggleSaveItem, incrementItemViews, deleteMarketplaceItem, isItemSaved } = useData();
-  const { getOrCreateConversation } = useChat();
+  const { getOrCreateConversation, sendMessage } = useChat();
   
   const isSaved = isItemSaved(item.id);
   const isOwnItem = user?.id === item.seller.id;
   const isAdmin = user?.role === 'Administrator';
+
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [contactMessage, setContactMessage] = useState('');
 
   // Increment views when component mounts (simulate viewing)
   useEffect(() => {
@@ -35,36 +40,52 @@ export function MarketplaceCard({ item }: MarketplaceCardProps) {
     }
   }, [item.id, incrementItemViews]);
 
-  const handleSave = () => {
-    toggleSaveItem(item.id);
-    if (!isSaved) {
-      toast.success('Item saved');
-    } else {
-      toast.success('Item unsaved');
+  const handleSave = async () => {
+    try {
+      await toggleSaveItem(item.id);
+      toast.success(isSaved ? 'Item unsaved' : 'Item saved');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update save');
     }
   };
 
   const handleContactSeller = () => {
     if (!currentUser || isOwnItem) return;
-    
-    // Create or get existing conversation
-    getOrCreateConversation(
-      item.seller.id,
-      item.seller.name,
-      {
-        type: 'marketplace',
-        itemId: item.id,
-        itemTitle: item.title,
-      }
-    );
-    
-    // Navigate to messages page
-    window.location.hash = '#messages';
+    setIsContactModalOpen(true);
   };
 
-  const handleDeleteItem = () => {
-    deleteMarketplaceItem(item.id);
-    toast.success('Item deleted');
+  const handleSendMessage = async () => {
+    if (!contactMessage.trim() || !currentUser) return;
+
+    try {
+      const conversationId = await getOrCreateConversation(
+        item.seller.id,
+        item.seller.name,
+        { type: 'marketplace', itemId: item.id, itemTitle: item.title }
+      );
+
+      if (!conversationId) {
+        toast.error('Could not start conversation. Please try again.');
+        return;
+      }
+
+      sendMessage(conversationId, contactMessage.trim());
+      setIsContactModalOpen(false);
+      setContactMessage('');
+      window.location.hash = '#messages';
+    } catch (err: any) {
+      console.error('[handleSendMessage]', err);
+      toast.error(err?.message || 'Failed to send message. Please try again.');
+    }
+  };
+
+  const handleDeleteItem = async () => {
+    try {
+      await deleteMarketplaceItem(item.id);
+      toast.success('Item deleted');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete item');
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -208,6 +229,47 @@ export function MarketplaceCard({ item }: MarketplaceCardProps) {
           </div>
         </div>
       </div>
+      <Dialog open={isContactModalOpen} onOpenChange={(open) => { setIsContactModalOpen(open); if (!open) setContactMessage(''); }}>
+        <DialogContent className="max-w-sm mx-4">
+          <DialogHeader>
+            <DialogTitle className="font-[Roboto]">Contact Seller</DialogTitle>
+          </DialogHeader>
+
+          {/* Seller preview */}
+          <div className="flex items-center gap-3 py-1">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm shrink-0">
+              {item.seller.name.charAt(0).toUpperCase()}
+            </div>
+            <span className="font-semibold text-sm font-[Roboto]">{item.seller.name}</span>
+          </div>
+
+          {/* Post preview */}
+          <div className="bg-[#f8f9fb] border border-[#e5e7eb] rounded-lg p-3">
+            <p className="text-xs text-[#999] mb-1 font-[Roboto]">About</p>
+            <p className="text-sm font-semibold font-[Roboto]">{item.title}</p>
+            <p className="text-sm text-[#666] font-[Roboto]">${item.price} · {item.condition}</p>
+          </div>
+
+          {/* Message input */}
+          <div className="flex items-center gap-2 pt-1">
+            <Input
+              value={contactMessage}
+              onChange={(e) => setContactMessage(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }}
+              placeholder={`Message ${item.seller.name}...`}
+              className="flex-1 border-[#f0f0f0] rounded-full px-4 font-[Roboto]"
+              autoFocus
+            />
+            <Button
+              onClick={handleSendMessage}
+              disabled={!contactMessage.trim()}
+              className="rounded-full w-10 h-10 p-0 bg-gradient-to-br from-[#4D8CFF] to-[#0B5FFF] hover:from-[#3D7EF0] hover:to-[#0A54E6]"
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </article>
   );
 }

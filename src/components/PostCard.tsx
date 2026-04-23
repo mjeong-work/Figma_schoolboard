@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Heart, MessageCircle, Repeat2, Send, MoreHorizontal, CheckCircle, BadgeCheck } from 'lucide-react';
+import { Heart, MessageCircle, Repeat2, Send, MoreHorizontal, BadgeCheck } from 'lucide-react';
 import { Button } from './ui/button';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Collapsible, CollapsibleContent } from './ui/collapsible';
@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
 import { toast } from 'sonner@2.0.3';
+import { EditPostDialog } from './EditPostDialog';
 
 interface PostCardProps {
   post: Post;
@@ -20,16 +21,18 @@ interface PostCardProps {
 
 export function PostCard({ post }: PostCardProps) {
   const { user } = useAuth();
-  const { 
-    toggleLikePost, 
-    addCommentToPost, 
+  const {
+    toggleLikePost,
+    addCommentToPost,
     deleteCommentFromPost,
     deletePost,
-    isPostLiked 
+    updatePost,
+    isPostLiked
   } = useData();
-  
+
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
   const isLiked = isPostLiked(post.id);
   const isOwnPost = user?.id === post.authorId;
@@ -39,22 +42,42 @@ export function PostCard({ post }: PostCardProps) {
     toggleLikePost(post.id);
   };
 
-  const handleAddComment = () => {
-    if (commentText.trim()) {
-      addCommentToPost(post.id, commentText);
+  const handleAddComment = async () => {
+    if (!commentText.trim()) return;
+    try {
+      await addCommentToPost(post.id, commentText);
       setCommentText('');
       toast.success('Comment added');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to add comment');
     }
   };
 
-  const handleDeleteComment = (commentId: string) => {
-    deleteCommentFromPost(post.id, commentId);
-    toast.success('Comment deleted');
+  const handleDeleteComment = async (commentId: string) => {
+    try {
+      await deleteCommentFromPost(post.id, commentId);
+      toast.success('Comment deleted');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete comment');
+    }
   };
 
-  const handleDeletePost = () => {
-    deletePost(post.id);
-    toast.success('Post deleted');
+  const handleDeletePost = async () => {
+    try {
+      await deletePost(post.id);
+      toast.success('Post deleted');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete post');
+    }
+  };
+
+  const handleEditPost = async (updates: { title: string; content: string; image: string | null; category: string }) => {
+    try {
+      await updatePost(post.id, updates);
+      toast.success('Post updated');
+    } catch {
+      toast.error('Failed to update post');
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -99,7 +122,15 @@ export function PostCard({ post }: PostCardProps) {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
                   {(isOwnPost || isAdmin) && (
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
+                      className="cursor-pointer"
+                      onClick={() => setIsEditOpen(true)}
+                    >
+                      Edit post
+                    </DropdownMenuItem>
+                  )}
+                  {(isOwnPost || isAdmin) && (
+                    <DropdownMenuItem
                       className="cursor-pointer text-red-600 focus:text-red-600"
                       onClick={handleDeletePost}
                     >
@@ -107,7 +138,6 @@ export function PostCard({ post }: PostCardProps) {
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem className="cursor-pointer">Report post</DropdownMenuItem>
-                  <DropdownMenuItem className="cursor-pointer">Save post</DropdownMenuItem>
                   <DropdownMenuItem className="cursor-pointer">Share post</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -245,6 +275,14 @@ export function PostCard({ post }: PostCardProps) {
           </Collapsible>
         </div>
       </div>
+      {isEditOpen && (
+        <EditPostDialog
+          open={isEditOpen}
+          onOpenChange={setIsEditOpen}
+          post={post}
+          onSubmit={handleEditPost}
+        />
+      )}
     </div>
   );
 }

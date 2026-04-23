@@ -126,19 +126,24 @@ export default function CommunityPage() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
 
-  const handleCreatePost = (newPost: {
+  const handleCreatePost = async (newPost: {
     title: string;
     category: string;
     content: string;
     image?: string;
   }) => {
-    addPost({
-      title: newPost.title,
-      content: newPost.content,
-      image: newPost.image || null,
-      category: newPost.category as 'current-students' | 'alumni' | 'all-school'
-    });
-    toast.success('Post created successfully!');
+    try {
+      await addPost({
+        title: newPost.title,
+        content: newPost.content,
+        image: newPost.image || null,
+        category: newPost.category as 'current-students' | 'alumni' | 'all-school',
+      });
+      toast.success('Post created successfully!');
+    } catch (err: any) {
+      console.error('[handleCreatePost]', err);
+      toast.error(err?.message || 'Failed to create post. Please try again.');
+    }
   };
 
   // Filter and search logic
