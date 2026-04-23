@@ -2,18 +2,19 @@ import { useState } from 'react';
 import { Heart, MessageCircle, Calendar, Clock, MapPin, Users, CheckCircle, Send, MoreHorizontal, UserPlus } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Collapsible, CollapsibleContent } from './ui/collapsible';
 import { useData, type Event } from '../utils/dataContext';
 import { useAuth } from '../utils/authContext';
 import { useChat } from '../utils/chatContext';
+import { toast } from 'sonner@2.0.3';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { toast } from 'sonner@2.0.3';
 
 interface EventCardProps {
   event: Event;
@@ -33,6 +34,8 @@ export function EventCard({ event }: EventCardProps) {
   
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState('');
+  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
+  const [messageText, setMessageText] = useState('');
 
   const isLiked = isEventLiked(event.id);
   const hasRSVPed = hasUserRSVPed(event.id);
@@ -82,41 +85,29 @@ export function EventCard({ event }: EventCardProps) {
   };
 
   const handleContactHost = () => {
-    console.log('🔵 Contact Host clicked');
-    console.log('🔵 user:', user);
-    console.log('🔵 event.authorId:', event.authorId);
-    console.log('🔵 isOwnEvent:', isOwnEvent);
-    
-    if (!user || isOwnEvent) {
-      console.log('❌ Blocked: User not logged in or is own event');
-      return;
-    }
-    
-    console.log('🔵 Creating conversation with:', {
-      authorId: event.authorId,
-      author: event.author,
-      eventId: event.id,
-      eventTitle: event.title
-    });
-    
-    // Create or get existing conversation
-    const conversationId = getOrCreateConversation(
-      event.authorId,
-      event.author,
-      {
-        type: 'event',
-        itemId: event.id,
-        itemTitle: event.title,
+    if (!user || isOwnEvent) return;
+    setIsMessageModalOpen(true);
+  };
+
+  const handleSendMessage = async () => {
+    if (!messageText.trim() || !user) return;
+    try {
+      const conversationId = await getOrCreateConversation(
+        event.authorId,
+        event.author,
+        { type: 'event', itemId: event.id, itemTitle: event.title }
+      );
+      if (!conversationId) {
+        toast.error('Could not start conversation. Please try again.');
+        return;
       }
-    );
-    
-    console.log('✅ Conversation ID:', conversationId);
-    
-    // Dispatch custom event to open chat window
-    const event_obj = new CustomEvent('openChat', { detail: { conversationId } });
-    console.log('📤 Dispatching openChat event:', event_obj);
-    window.dispatchEvent(event_obj);
-    console.log('✅ Event dispatched');
+      sendMessage(conversationId, messageText.trim());
+      setIsMessageModalOpen(false);
+      setMessageText('');
+      window.location.hash = '#messages';
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to send message. Please try again.');
+    }
   };
 
   return (

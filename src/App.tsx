@@ -8,8 +8,9 @@ import MarketplacePage from "./MarketplacePage";
 import ProfilePage from "./ProfilePage";
 import AdminPage from "./AdminPage";
 import EditProfilePage from "./EditProfilePage";
-import LoginPage from "./LoginPage";
 import RegisterPage from "./RegisterPage";
+import LoginPage from "./LoginPage";
+import ForgotPasswordPage from "./ForgotPasswordPage";
 import VerificationPendingPage from "./VerificationPendingPage";
 import { MessagesPage } from "./components/MessagesPage";
 import { ChatManager } from "./components/ChatManager";
@@ -23,14 +24,14 @@ type PageType =
   | "admin"
   | "edit-profile"
   | "messages"
-  | "login"
   | "register"
-  | "verification";
+  | "verification"
+  | "login"
+  | "forgot-password";
 
 function AppRouter() {
   const { user, isAuthenticated } = useAuth();
-  const [currentPage, setCurrentPage] =
-    useState<PageType>("login");
+  const [currentPage, setCurrentPage] = useState<PageType>("login");
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -39,16 +40,13 @@ function AppRouter() {
         .replace("/", "");
 
       // Auth pages (accessible when not authenticated)
-      if (hash === "login" || hash === "") {
-        setCurrentPage("login");
-        if (hash !== "login") {
-          window.location.hash = "#/login";
-        }
+      if (hash === "register") {
+        setCurrentPage("register");
         return;
       }
 
-      if (hash === "register") {
-        setCurrentPage(hash);
+      if (hash === "forgot-password") {
+        setCurrentPage("forgot-password");
         return;
       }
 
@@ -83,7 +81,12 @@ function AppRouter() {
       } else if (hash === "profile") {
         setCurrentPage("profile");
       } else if (hash === "admin") {
-        setCurrentPage("admin");
+        if (user?.role === 'Administrator') {
+          setCurrentPage("admin");
+        } else {
+          setCurrentPage("community");
+          window.location.hash = "#community";
+        }
       } else if (hash === "edit-profile") {
         setCurrentPage("edit-profile");
       } else if (hash === "messages") {
@@ -99,13 +102,10 @@ function AppRouter() {
     };
 
     window.addEventListener("hashchange", handleHashChange);
-    handleHashChange(); // Check initial hash
+    handleHashChange();
 
     return () =>
-      window.removeEventListener(
-        "hashchange",
-        handleHashChange,
-      );
+      window.removeEventListener("hashchange", handleHashChange);
   }, [isAuthenticated, user]);
 
   // Render appropriate page
@@ -115,6 +115,10 @@ function AppRouter() {
 
   if (currentPage === "register") {
     return <RegisterPage />;
+  }
+
+  if (currentPage === "forgot-password") {
+    return <ForgotPasswordPage />;
   }
 
   if (currentPage === "verification") {

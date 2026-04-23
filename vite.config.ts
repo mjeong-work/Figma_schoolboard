@@ -54,7 +54,13 @@
       outDir: 'build',
     },
     server: {
-      port: 3000,
+      host: 'localhost',
+      port: 3006,
+      strictPort: true,
       open: true,
+      hmr: {
+        host: 'localhost',
+        port: 3006,
+      },
     },
   });

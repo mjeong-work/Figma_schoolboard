@@ -9,107 +9,11 @@ import { Calendar } from './components/ui/calendar';
 import { Search, X } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { useData } from './utils/dataContext';
-
-const mockEvents = [
-  {
-    id: '1',
-    title: 'CS Department Career Fair',
-    date: '2025-11-05',
-    time: '10:00 AM - 4:00 PM',
-    venue: 'Engineering Building, Hall A',
-    participants: 127,
-    userRSVP: true,
-    description: 'Meet with top tech companies and explore internship and full-time opportunities. Bring your resume!',
-    image: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80',
-    likes: 89,
-    comments: [
-      { id: '1', author: 'Anonymous', text: 'Which companies will be attending?', date: '2025-10-30' },
-      { id: '2', author: 'Anonymous', text: 'Do we need to register beforehand or can we just show up?', date: '2025-10-31' }
-    ]
-  },
-  {
-    id: '2',
-    title: 'Fall Semester Study Break - Free Coffee & Snacks',
-    date: '2025-11-01',
-    time: '2:00 PM - 5:00 PM',
-    venue: 'Student Center, Main Lounge',
-    participants: 245,
-    userRSVP: true,
-    description: 'Take a break from studying! Join us for free coffee, snacks, and board games.',
-    image: 'https://images.unsplash.com/photo-1511578314322-379afb476865?w=800&q=80',
-    likes: 156,
-    comments: [
-      { id: '1', author: 'Anonymous', text: 'Will there be vegan options?', date: '2025-10-29' },
-      { id: '2', author: 'Anonymous', text: 'This sounds amazing! Can\'t wait!', date: '2025-10-30' }
-    ]
-  },
-  {
-    id: '3',
-    title: 'Hackathon 2025: Build for Good',
-    date: '2025-11-08',
-    time: '9:00 AM - 9:00 PM',
-    venue: 'Innovation Lab, Building 7',
-    participants: 89,
-    userRSVP: false,
-    description: '12-hour hackathon focused on social impact projects. Form teams or join solo. Prizes for top 3 teams!',
-    image: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=800&q=80',
-    likes: 67,
-    comments: [
-      { id: '1', author: 'Anonymous', text: 'Are beginners welcome?', date: '2025-10-28' },
-      { id: '2', author: 'Anonymous', text: 'What tech stacks are allowed?', date: '2025-10-29' }
-    ]
-  },
-  {
-    id: '4',
-    title: 'Wellness Wednesday: Yoga & Meditation',
-    date: '2025-11-06',
-    time: '5:30 PM - 6:30 PM',
-    venue: 'Recreation Center, Studio B',
-    participants: 34,
-    userRSVP: false,
-    description: 'De-stress with a guided yoga and meditation session. All skill levels welcome. Bring your own mat.',
-    image: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=800&q=80',
-    likes: 45,
-    comments: [
-      { id: '1', author: 'Anonymous', text: 'Do we need to bring our own mats?', date: '2025-10-30' }
-    ]
-  },
-  {
-    id: '5',
-    title: 'International Food Festival',
-    date: '2025-11-10',
-    time: '12:00 PM - 6:00 PM',
-    venue: 'Campus Quad',
-    participants: 312,
-    userRSVP: true,
-    description: 'Celebrate diversity with food from around the world! Student clubs will showcase their cultural cuisines.',
-    image: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&q=80',
-    likes: 234,
-    comments: [
-      { id: '1', author: 'Anonymous', text: 'Will there be Indian food?', date: '2025-10-28' },
-      { id: '2', author: 'Anonymous', text: 'Are the food free or do we need to pay?', date: '2025-10-29' },
-      { id: '3', author: 'Anonymous', text: 'Most items are $3-5, some clubs offer free samples!', date: '2025-10-29' }
-    ]
-  },
-  {
-    id: '6',
-    title: 'Alumni Speaker Series: Entrepreneurship',
-    date: '2025-11-03',
-    time: '6:00 PM - 7:30 PM',
-    venue: 'Business School, Auditorium 101',
-    participants: 156,
-    userRSVP: false,
-    description: 'Hear from successful alumni entrepreneurs about their journey from campus to startup.',
-    image: 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?w=800&q=80',
-    likes: 92,
-    comments: [
-      { id: '1', author: 'Anonymous', text: 'Who are the speakers?', date: '2025-10-27' }
-    ]
-  }
-];
+import { useAuth } from './utils/authContext';
 
 export default function EventsPage() {
   const { events, addEvent } = useData();
+  const { user } = useAuth();
   const [isCreateEventOpen, setIsCreateEventOpen] = useState(false);
   const [selectedTab, setSelectedTab] = useState('upcoming');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
@@ -125,7 +29,7 @@ export default function EventsPage() {
     return weekStart;
   });
 
-  const handleCreateEvent = (newEvent: {
+  const handleCreateEvent = async (newEvent: {
     title: string;
     date: string;
     time: string;
@@ -134,16 +38,20 @@ export default function EventsPage() {
     image?: string;
     category?: string;
   }) => {
-    addEvent({
-      title: newEvent.title,
-      date: newEvent.date,
-      time: newEvent.time,
-      venue: newEvent.venue,
-      description: newEvent.description,
-      image: newEvent.image || 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&q=80',
-      category: newEvent.category
-    });
-    toast.success('Event created successfully!');
+    try {
+      await addEvent({
+        title: newEvent.title,
+        date: newEvent.date,
+        time: newEvent.time,
+        venue: newEvent.venue,
+        description: newEvent.description,
+        image: newEvent.image || '',
+        category: newEvent.category,
+      });
+      toast.success('Event created successfully!');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to create event');
+    }
   };
 
   // Filter events based on tab and selected date
@@ -161,21 +69,23 @@ export default function EventsPage() {
     }
 
     // Apply tab filter
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Use a local-timezone YYYY-MM-DD string to avoid UTC midnight parsing
+    // shifting today's date by one day for UTC+ or UTC- users.
+    const d = new Date();
+    const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     switch (selectedTab) {
       case 'upcoming':
-        result = result.filter((event) => new Date(event.date) >= today);
-        result.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        result = result.filter((event) => event.date >= todayStr);
+        result.sort((a, b) => a.date.localeCompare(b.date));
         break;
       case 'rsvp':
-        result = result.filter((event) => event.participants.some(p => p.userId === 'current-user-id'));
-        result.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        result = result.filter((event) => user && event.participants.includes(user.id));
+        result.sort((a, b) => a.date.localeCompare(b.date));
         break;
       case 'past':
-        result = result.filter((event) => new Date(event.date) < today);
-        result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        result = result.filter((event) => event.date < todayStr);
+        result.sort((a, b) => b.date.localeCompare(a.date));
         break;
     }
 

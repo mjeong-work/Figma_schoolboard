@@ -4,6 +4,7 @@ import { NavigationBar } from './components/NavigationBar';
 import { MarketplaceCard } from './components/MarketplaceCard';
 import { FloatingActionButton } from './components/FloatingActionButton';
 import { CreateMarketplaceDialog } from './components/CreateMarketplaceDialog';
+import { Button } from './components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 import { toast } from 'sonner@2.0.3';
 import { useData } from './utils/dataContext';
@@ -17,7 +18,7 @@ export default function MarketplacePage() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
-  const handleCreateListing = (newListing: {
+  const handleCreateListing = async (newListing: {
     title: string;
     category: string;
     price: number;
@@ -26,20 +27,25 @@ export default function MarketplacePage() {
     contactMethod: string;
     image?: string;
   }) => {
-    addMarketplaceItem({
-      title: newListing.title,
-      category: newListing.category,
-      price: newListing.price,
-      condition: newListing.condition,
-      description: newListing.description,
-      image: newListing.image || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80',
-      seller: {
-        name: user?.name || 'Anonymous Student',
-        contact: newListing.contactMethod,
-        verified: user?.verified || false
-      }
-    });
-    toast.success('Listing created successfully!');
+    try {
+      await addMarketplaceItem({
+        title: newListing.title,
+        category: newListing.category,
+        price: newListing.price,
+        condition: newListing.condition,
+        description: newListing.description,
+        image: newListing.image || null,
+        seller: {
+          name: user?.name || 'Anonymous Student',
+          contact: newListing.contactMethod,
+          verified: user?.verified || false,
+        },
+      });
+      toast.success('Listing created successfully!');
+    } catch (err: any) {
+      console.error('[handleCreateListing]', err);
+      toast.error(err?.message || 'Failed to create listing. Please try again.');
+    }
   };
 
   // Filter and search logic
@@ -103,12 +109,22 @@ export default function MarketplacePage() {
                 </button>
               </>
             ) : (
-              <button 
-                onClick={() => setIsSearchOpen(true)}
-                className="p-2 hover:bg-black/5 rounded-full transition-colors ml-auto"
-              >
-                <Search className="w-5 h-5 text-black" strokeWidth={1.5} />
-              </button>
+              <>
+                {user && (
+                  <Button
+                    onClick={() => setIsCreateDialogOpen(true)}
+                    className="ml-auto bg-black hover:bg-black/80 text-white px-4 h-8 rounded-full text-sm font-[Roboto]"
+                  >
+                    Post
+                  </Button>
+                )}
+                <button
+                  onClick={() => setIsSearchOpen(true)}
+                  className={`p-2 hover:bg-black/5 rounded-full transition-colors${!user ? ' ml-auto' : ''}`}
+                >
+                  <Search className="w-5 h-5 text-black" strokeWidth={1.5} />
+                </button>
+              </>
             )}
           </div>
 

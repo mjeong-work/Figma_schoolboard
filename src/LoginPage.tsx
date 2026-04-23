@@ -3,100 +3,83 @@ import { useAuth } from './utils/authContext';
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { Label } from './components/ui/label';
-import { Eye, EyeOff, LogIn } from 'lucide-react';
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState('admin@university.edu');
-  const [password, setPassword] = useState('password');
-  const [showPassword, setShowPassword] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async () => {
     setError('');
     setLoading(true);
-
-    const result = await login(email, password);
+    const result = await login(username, password);
     setLoading(false);
-
     if (!result.success) {
       setError(result.message);
-      return;
     }
-
-    window.location.hash = '#/community';
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-8">
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-[#111] mb-2">Campus Connect</h1>
-          <p className="text-[#666]">Sign in with your campus account</p>
+          <p className="text-[#666]">Sign in to your account</p>
         </div>
 
-        <div className="bg-white border border-[#e5e5e5] rounded-xl p-8">
-          <div className="flex items-center gap-2 mb-6">
-            <LogIn className="w-5 h-5 text-[#0b5fff]" />
-            <h2 className="text-[#111]">Sign In</h2>
+        <div className="bg-white border border-[#e5e5e5] rounded-xl p-8 space-y-4">
+          <div className="space-y-2">
+            <Label>Username</Label>
+            <Input
+              type="text"
+              placeholder="your_username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Campus Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@university.edu"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+          <div className="space-y-2">
+            <Label>Password</Label>
+            <Input
+              type="password"
+              placeholder="Your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+              {error}
             </div>
+          )}
 
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#666] hover:text-[#333]"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
+          <Button
+            onClick={handleLogin}
+            disabled={loading}
+            className="w-full bg-[#0b5fff] hover:bg-[#0a4ecc]"
+          >
+            {loading ? 'Signing in...' : 'Sign In'}
+          </Button>
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
-
-            <Button type="submit" disabled={loading} className="w-full bg-[#0b5fff] hover:bg-[#0a4ecc]">
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Button>
-          </form>
-
-          <div className="mt-6 text-center">
+          <div className="text-center space-y-2">
             <p className="text-sm text-[#666]">
-              Don&apos;t have an account?{' '}
+              Don't have an account?{' '}
               <button
-                type="button"
                 onClick={() => (window.location.hash = '#/register')}
                 className="text-[#0b5fff] hover:underline"
               >
-                Sign Up
+                Register
+              </button>
+            </p>
+            <p className="text-sm">
+              <button
+                onClick={() => (window.location.hash = '#/forgot-password')}
+                className="text-[#666] hover:text-[#0b5fff] hover:underline"
+              >
+                Forgot password?
               </button>
             </p>
           </div>

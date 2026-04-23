@@ -1,27 +1,25 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { localAuthRepository, type AuthUserRecord, type UserStatus } from './authRepository';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
 
 export interface User {
   id: string;
   name: string;
   email: string;
+  username: string;
   role: string;
   department: string;
   verified: boolean;
-  status: UserStatus;
+  status: 'pending' | 'approved' | 'rejected';
   avatar?: string;
   graduationYear?: string;
-}
-
-export interface CurrentUser extends User {
-  displayName: string;
+  bio?: string;
 }
 
 interface AuthContextType {
   user: User | null;
-  currentUser: CurrentUser | null;
+  currentUser: User | null;  // alias for user; consumed by chat/marketplace components
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
+  login: (username: string, password: string) => Promise<{ success: boolean; message: string }>;
   register: (data: RegisterData) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
   updateUser: (updates: Partial<User>) => void;
@@ -30,6 +28,7 @@ interface AuthContextType {
 export interface RegisterData {
   name: string;
   email: string;
+  username: string;
   password: string;
   role: string;
   department: string;
@@ -37,162 +36,150 @@ export interface RegisterData {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const CURRENT_USER_KEY = 'campusconnect_currentUser';
-
-const toPublicUser = (record: AuthUserRecord): User => ({
-  id: record.id,
-  name: record.name,
-  email: record.email,
-  role: record.role,
-  department: record.department,
-  verified: record.verified,
-  status: record.status,
-  avatar: record.avatar,
-  graduationYear: record.graduationYear,
-});
-
-const safeReadCurrentUser = (): User | null => {
-  const raw = localStorage.getItem(CURRENT_USER_KEY);
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw) as User;
-    const dbUser = localAuthRepository.findById(parsed.id);
-    return dbUser ? toPublicUser(dbUser) : null;
-  } catch {
-    return null;
-  }
-};
-
-const saveCurrentUser = (user: User | null) => {
-  if (!user) {
-    localStorage.removeItem(CURRENT_USER_KEY);
-    return;
-  }
-  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
-};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
 
+  // Load user on mount
   useEffect(() => {
-    setUser(safeReadCurrentUser());
+    // Get current session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) fetchProfile(session.user.id);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        fetchProfile(session.user.id);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const currentUser = useMemo<CurrentUser | null>(() => {
-    if (!user) return null;
-    return {
-      ...user,
-      displayName: user.name,
-    };
-  }, [user]);
+  const profileToUser = (data: Record<string, any>): User => ({
+    id: data.id,
+    name: data.name,
+    email: data.email,
+    username: data.username ?? '',
+    role: data.role,
+    department: data.department,
+    verified: data.verified,
+    status: data.status,
+    avatar: data.avatar_url,
+    graduationYear: data.graduation_year,
+    bio: data.bio,
+  });
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; message: string }> => {
-    await new Promise((resolve) => setTimeout(resolve, 300));
+  const fetchProfile = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
 
-    const foundUser = localAuthRepository.findByEmail(email);
-    if (!foundUser) {
-      return { success: false, message: 'No account found with that email.' };
+    if (data) {
+      setUser(profileToUser(data));
+      return;
     }
 
-    if (foundUser.password !== password) {
-      return { success: false, message: 'Incorrect password.' };
+    // PGRST116 = no rows found.
+    // The DB trigger may not be installed yet, or email confirmation
+    // delayed the insert. We have a valid session here (fetchProfile is
+    // only called from onAuthStateChange when session != null), so the
+    // RLS INSERT policy (auth.uid() = id) will pass.
+    if (error?.code === 'PGRST116') {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+
+      const meta = authUser.user_metadata ?? {};
+      const { error: insertError } = await supabase.from('profiles').insert({
+        id: userId,
+        name: meta.name ?? authUser.email?.split('@')[0] ?? '',
+        email: authUser.email ?? '',
+        username: meta.username ?? null,
+        role: meta.role ?? 'Student',
+        department: meta.department ?? '',
+        graduation_year: meta.graduation_year ?? null,
+        status: 'pending',
+        verified: false,
+      });
+
+      if (insertError) {
+        console.error('[fetchProfile] profile insert failed:', insertError.message);
+        return;
+      }
+
+      const { data: created } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      if (created) setUser(profileToUser(created));
     }
-
-    const authenticatedUser = toPublicUser(foundUser);
-    setUser(authenticatedUser);
-    saveCurrentUser(authenticatedUser);
-
-    if (authenticatedUser.status === 'pending') {
-      return {
-        success: true,
-        message: 'Login successful. Your account is still pending approval.',
-      };
-    }
-
-    if (authenticatedUser.status === 'rejected') {
-      return {
-        success: true,
-        message: 'Login successful. Your account has been rejected.',
-      };
-    }
-
-    return { success: true, message: 'Login successful.' };
   };
 
-  const register = async (data: RegisterData): Promise<{ success: boolean; message: string }> => {
-    await new Promise((resolve) => setTimeout(resolve, 300));
+  const login = async (username: string, password: string) => {
+    // Look up email by username via RPC (runs as SECURITY DEFINER, no public table read needed)
+    const { data: email, error: rpcError } = await supabase.rpc('get_email_by_username', { p_username: username });
+    if (rpcError || !email) return { success: false, message: 'Username not found' };
 
-    if (!data.email.endsWith('.edu')) {
-      return { success: false, message: 'Please use a valid campus email address (.edu).' };
-    }
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { success: false, message: error.message };
+    return { success: true, message: 'Login successful' };
+  };
 
-    if (localAuthRepository.findByEmail(data.email)) {
-      return { success: false, message: 'An account with this email already exists.' };
-    }
-
-    const newUserRecord: AuthUserRecord = {
-      id: Date.now().toString(),
-      name: data.name,
-      email: data.email.trim().toLowerCase(),
+  const register = async (data: RegisterData) => {
+    // Pass profile fields via options.data so the DB trigger (handle_new_user)
+    // can read them from raw_user_meta_data and insert the profile row itself.
+    // This avoids the RLS violation that occurred when the frontend tried to
+    // INSERT before a session existed (email-confirmation-enabled setups).
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: data.email,
       password: data.password,
-      role: data.role,
-      department: data.department,
-      graduationYear: data.graduationYear,
-      verified: false,
-      status: 'pending',
-      createdAt: Date.now(),
-    };
+      options: {
+        data: {
+          name: data.name,
+          username: data.username,
+          role: data.role,
+          department: data.department,
+          graduation_year: data.graduationYear ?? null,
+        },
+      },
+    });
 
-    localAuthRepository.createUser(newUserRecord);
+    if (authError) return { success: false, message: authError.message };
+    if (!authData.user) return { success: false, message: 'Registration failed' };
 
-    const newUser = toPublicUser(newUserRecord);
-    setUser(newUser);
-    saveCurrentUser(newUser);
-
-    return {
-      success: true,
-      message: 'Registration successful. Your account is pending admin approval.',
-    };
+    return { success: true, message: 'Registration successful! Your account is pending approval.' };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    saveCurrentUser(null);
   };
 
-  const updateUser = (updates: Partial<User>) => {
+  const updateUser = async (updates: Partial<User>) => {
     if (!user) return;
 
-    const updatedDbUser = localAuthRepository.updateUser(user.id, {
+    const { error } = await supabase.from('profiles').update({
       name: updates.name,
       role: updates.role,
       department: updates.department,
-      verified: updates.verified,
-      status: updates.status,
-      avatar: updates.avatar,
-      graduationYear: updates.graduationYear,
-    });
+      graduation_year: updates.graduationYear,
+      bio: updates.bio,
+      avatar_url: updates.avatar,
+    }).eq('id', user.id);
 
-    if (!updatedDbUser) return;
-
-    const updatedUser = toPublicUser(updatedDbUser);
-    setUser(updatedUser);
-    saveCurrentUser(updatedUser);
+    if (!error) {
+      setUser({ ...user, ...updates });
+    }
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        currentUser,
-        isAuthenticated: !!user,
-        login,
-        register,
-        logout,
-        updateUser,
-      }}
-    >
+    <AuthContext.Provider value={{ user, currentUser: user, isAuthenticated: !!user, login, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -206,36 +193,28 @@ export const useAuth = () => {
   return context;
 };
 
-export const getPendingUsers = (): User[] => {
-  return localAuthRepository
-    .getAllUsers()
-    .filter((user) => user.status === 'pending')
-    .map(toPublicUser);
+
+// Helper functions for admin to manage users
+export const approveUser = async (userId: string) => {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ status: 'approved', verified: true })
+    .eq('id', userId);
+  return { error };
 };
 
-export const approveUser = (userId: string) => {
-  const updated = localAuthRepository.updateUser(userId, {
-    status: 'approved',
-    verified: true,
-  });
-
-  if (!updated) return;
-
-  const sessionUser = safeReadCurrentUser();
-  if (sessionUser?.id === userId) {
-    saveCurrentUser(toPublicUser(updated));
-  }
+export const rejectUser = async (userId: string) => {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ status: 'rejected' })
+    .eq('id', userId);
+  return { error };
 };
 
-export const rejectUser = (userId: string) => {
-  const updated = localAuthRepository.updateUser(userId, {
-    status: 'rejected',
-  });
-
-  if (!updated) return;
-
-  const sessionUser = safeReadCurrentUser();
-  if (sessionUser?.id === userId) {
-    saveCurrentUser(toPublicUser(updated));
-  }
+export const getPendingUsers = async () => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('status', 'pending');
+  return data || [];
 };
