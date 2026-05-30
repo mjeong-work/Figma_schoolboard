@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Heart, MessageCircle, Calendar, Clock, MapPin, Users, CheckCircle, Send, MoreHorizontal, UserPlus } from 'lucide-react';
+import { Heart, MessageCircle, Calendar, Clock, MapPin, Users, CheckCircle, Send, MoreHorizontal, UserPlus, ChevronRight } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
@@ -204,7 +204,7 @@ export function EventCard({ event }: EventCardProps) {
                   : 'bg-black text-white hover:bg-black/80'
               }`}
             >
-              <UserPlus className="w-4 h-4" strokeWidth={2} />
+              <ChevronRight className="w-4 h-4" strokeWidth={2} />
               {hasRSVPed ? 'Going' : 'RSVP'}
             </button>
 
