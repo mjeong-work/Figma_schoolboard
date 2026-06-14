@@ -5,7 +5,6 @@ import { FloatingActionButton } from './components/FloatingActionButton';
 import { CreateEventDialog } from './components/CreateEventDialog';
 import { Button } from './components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
-import { Calendar } from './components/ui/calendar';
 import { Search, X } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { useData } from './utils/dataContext';
@@ -37,6 +36,7 @@ export default function EventsPage() {
     description: string;
     image?: string;
     category?: string;
+    maxParticipants?: number;
   }) => {
     try {
       await addEvent({
@@ -47,6 +47,7 @@ export default function EventsPage() {
         description: newEvent.description,
         image: newEvent.image || '',
         category: newEvent.category,
+        maxParticipants: newEvent.maxParticipants,
       });
       toast.success('Event created successfully!');
     } catch (err: any) {
@@ -54,11 +55,11 @@ export default function EventsPage() {
     }
   };
 
-  // Filter events based on tab and selected date
+  // 💡 [수정된 부분] 날짜 필터링 로직이 똑똑하게 개선되었습니다.
   const filteredAndSortedEvents = useMemo(() => {
     let result = [...events];
 
-    // Apply search filter
+    // 1. 검색어 필터
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       result = result.filter((event) =>
@@ -68,35 +69,39 @@ export default function EventsPage() {
       );
     }
 
-    // Apply tab filter
-    // Use a local-timezone YYYY-MM-DD string to avoid UTC midnight parsing
-    // shifting today's date by one day for UTC+ or UTC- users.
-    const d = new Date();
-    const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-    switch (selectedTab) {
-      case 'upcoming':
-        result = result.filter((event) => event.date >= todayStr);
-        result.sort((a, b) => a.date.localeCompare(b.date));
-        break;
-      case 'rsvp':
-        result = result.filter((event) => user && event.participants.includes(user.id));
-        result.sort((a, b) => a.date.localeCompare(b.date));
-        break;
-      case 'past':
-        result = result.filter((event) => event.date < todayStr);
-        result.sort((a, b) => b.date.localeCompare(a.date));
-        break;
-    }
-
-    // Apply date filter if a date is selected
+    // 2. 날짜 클릭 vs 탭 선택 필터링 분리
     if (selectedDate) {
+      // 🎯 달력에서 특정 날짜를 클릭했을 때: 'Upcoming(미래)' 조건을 무시하고 해당 날짜의 이벤트를 무조건 보여줍니다!
       const selectedDateString = selectedDate.toISOString().split('T')[0];
       result = result.filter((event) => event.date === selectedDateString);
+      
+      // 단, RSVP 탭인 경우에는 클릭한 날짜 중에서도 내가 신청한 것만 보여줌
+      if (selectedTab === 'rsvp') {
+        result = result.filter((event) => user && event.participants.includes(user.id));
+      }
+    } else {
+      // 🎯 날짜를 클릭하지 않은 기본 상태일 때: 기존처럼 탭 조건에 맞게 필터링합니다.
+      const d = new Date();
+      const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+      switch (selectedTab) {
+        case 'upcoming':
+          result = result.filter((event) => event.date >= todayStr);
+          result.sort((a, b) => a.date.localeCompare(b.date));
+          break;
+        case 'rsvp':
+          result = result.filter((event) => user && event.participants.includes(user.id));
+          result.sort((a, b) => a.date.localeCompare(b.date));
+          break;
+        case 'past':
+          result = result.filter((event) => event.date < todayStr);
+          result.sort((a, b) => b.date.localeCompare(a.date));
+          break;
+      }
     }
 
     return result;
-  }, [events, selectedTab, selectedDate, searchQuery]);
+  }, [events, selectedTab, selectedDate, searchQuery, user]);
 
   // Get dates that have events for calendar highlighting
   const eventDates = useMemo(() => {

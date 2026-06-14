@@ -10,7 +10,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
-import { Upload, X, MapPin, Video, Search, Users } from 'lucide-react';
+import { Upload, X, MapPin, Video, Search } from 'lucide-react';
 import { useDaumPostcodePopup } from 'react-daum-postcode'; 
 
 interface CreateEventDialogProps {
@@ -24,7 +24,7 @@ interface CreateEventDialogProps {
     description: string;
     image?: string;
     category?: string;
-    maxParticipants?: number; // 💡 인원 제한 필드 추가
+    maxParticipants?: number;
   }) => void;
 }
 
@@ -40,11 +40,15 @@ export function CreateEventDialog({ open, onOpenChange, onSubmit }: CreateEventD
   const [onlineLink, setOnlineLink] = useState('');
 
   const [category, setCategory] = useState('Academic');
-  const [maxParticipants, setMaxParticipants] = useState(''); // 💡 인원 상태 추가
+  const [maxParticipants, setMaxParticipants] = useState('');
   const [description, setDescription] = useState('');
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
 
   const openPostcode = useDaumPostcodePopup();
+
+  // 💡 [과거 날짜 차단] 컴퓨터의 현재 시간을 기준으로 오늘 날짜를 YYYY-MM-DD 형태로 변환합니다.
+  const today = new Date();
+  const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   const handleCompletePostcode = (data: any) => {
     let fullAddress = data.address;
@@ -75,7 +79,8 @@ export function CreateEventDialog({ open, onOpenChange, onSubmit }: CreateEventD
       ? `[온라인] ${onlineLink.trim()}` 
       : `${venueName.trim()} ${venueDetail.trim()}`.trim();
     
-    if (!title.trim() || !date || !startTime || !endTime || !finalVenue || !description.trim()) return;
+    // 💡 데이터 전송 전 한 번 더 날짜를 검증합니다 (선택된 날짜가 오늘보다 작으면 전송 차단)
+    if (!title.trim() || !date || date < todayString || !startTime || !endTime || !finalVenue || !description.trim()) return;
 
     const newEvent = {
       title: title.trim(),
@@ -85,7 +90,6 @@ export function CreateEventDialog({ open, onOpenChange, onSubmit }: CreateEventD
       description: description.trim(),
       image: uploadedImage || undefined,
       category,
-      // 💡 숫자로 변환하여 전달 (입력 안 했을 시 undefined 처리로 무제한)
       maxParticipants: maxParticipants ? parseInt(maxParticipants, 10) : undefined 
     };
 
@@ -132,7 +136,15 @@ export function CreateEventDialog({ open, onOpenChange, onSubmit }: CreateEventD
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <Label htmlFor="event-date" className="text-[#666] mb-1.5 block">Date *</Label>
-              <Input id="event-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="border-[#e5e7eb] rounded-lg" required />
+              <Input 
+                id="event-date" 
+                type="date" 
+                value={date} 
+                min={todayString} // 💡 min 속성에 오늘 날짜를 넣어 이전 날짜 선택을 원천 차단합니다!
+                onChange={(e) => setDate(e.target.value)} 
+                className="border-[#e5e7eb] rounded-lg" 
+                required 
+              />
             </div>
             <div>
               <Label htmlFor="start-time" className="text-[#666] mb-1.5 block">Start Time *</Label>
@@ -175,16 +187,29 @@ export function CreateEventDialog({ open, onOpenChange, onSubmit }: CreateEventD
             )}
           </div>
 
-          {/* 카테고리 및 인원 제한 (2열 배치) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="event-category" className="text-[#666] mb-1.5 block">Category</Label>
               <Input id="event-category" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g., Academic, Social" className="border-[#e5e7eb] rounded-lg" />
             </div>
-            {/* 💡 인원 제한 입력란 추가 */}
+            
             <div>
-              <Label htmlFor="event-max-participants" className="text-[#666] mb-1.5 block">정원 제한 (선택)</Label>
-              <Input id="event-max-participants" type="number" min="1" value={maxParticipants} onChange={(e) => setMaxParticipants(e.target.value)} placeholder="제한 없음 (숫자만 입력)" className="border-[#e5e7eb] rounded-lg" />
+              <Label htmlFor="event-max-participants" className="text-[#666] mb-1.5 block">정원 제한</Label>
+              <select
+                id="event-max-participants"
+                value={maxParticipants}
+                onChange={(e) => setMaxParticipants(e.target.value)}
+                className="w-full bg-white border border-[#e5e7eb] rounded-lg h-10 px-3 text-sm focus:outline-none focus:border-[#0b5fff] transition-colors cursor-pointer"
+              >
+                <option value="">제한 없음 (무제한)</option>
+                <option value="5">5명</option>
+                <option value="10">10명</option>
+                <option value="15">15명</option>
+                <option value="20">20명</option>
+                <option value="30">30명</option>
+                <option value="50">50명</option>
+                <option value="100">100명</option>
+              </select>
             </div>
           </div>
 
@@ -195,7 +220,14 @@ export function CreateEventDialog({ open, onOpenChange, onSubmit }: CreateEventD
 
           <div className="flex flex-col-reverse sm:flex-row gap-2.5 pt-3">
             <Button type="button" onClick={handleCancel} className="bg-white border border-[#e5e7eb] text-[#111] hover:bg-[#f9fafb] px-6 py-2 rounded-lg w-full sm:w-auto">Cancel</Button>
-            <Button type="submit" disabled={!title.trim() || !date || !startTime || !endTime || description.trim() === ''} className="bg-[#0b5fff] hover:bg-[#0949cc] text-white px-6 py-2 rounded-lg shadow-sm w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed">Create Event</Button>
+            <Button 
+              type="submit" 
+              // 💡 과거 날짜를 임의로 입력했을 때도 버튼이 눌리지 않도록 disabled 조건에 추가했습니다.
+              disabled={!title.trim() || !date || date < todayString || !startTime || !endTime || description.trim() === ''} 
+              className="bg-[#0b5fff] hover:bg-[#0949cc] text-white px-6 py-2 rounded-lg shadow-sm w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Create Event
+            </Button>
           </div>
         </form>
       </DialogContent>
